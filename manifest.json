@@ -1,0 +1,14 @@
+{
+  "name": "Kasir Pro - POS Google Spreadsheet",
+  "short_name": "Kasir Pro",
+  "description": "Aplikasi kasir modern dengan Google Spreadsheet sebagai database",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F6F7FA",
+  "theme_color": "#1156C4",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
