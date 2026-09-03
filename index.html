@@ -324,6 +324,12 @@ function apiUrl(){ var s = activeSpreadsheet(); return s ? s.url : null; }
    — menghindari CORS preflight pada Apps Script)
 ===================================================================== */
 function apiCall(action, params, method){
+  // CATATAN: Semua panggilan (termasuk yang mengubah data) sengaja memakai
+  // metode GET dengan parameter di query string. Apps Script Web App
+  // me-redirect setiap request ke domain googleusercontent.com — pada
+  // request POST, redirect 302 tsb membuat browser mengubahnya menjadi GET
+  // dan MEMBUANG body POST, sehingga action & data ikut hilang. Dengan GET,
+  // seluruh data ada di URL sehingga selamat melewati redirect.
   var base = apiUrl();
   if(!base){ return Promise.reject(new Error('Spreadsheet belum terhubung')); }
   params = params || {};
@@ -331,12 +337,19 @@ function apiCall(action, params, method){
   params.spreadsheetId = ss.spreadsheetId;
   params.action = action;
 
-  if(method === 'POST'){
-    return fetch(base, { method:'POST', body: JSON.stringify(params), headers:{'Content-Type':'text/plain;charset=utf-8'} })
-      .then(function(r){ return r.json(); });
-  }
-  var qs = Object.keys(params).map(function(k){ return encodeURIComponent(k)+'='+encodeURIComponent(params[k]); }).join('&');
-  return fetch(base + '?' + qs).then(function(r){ return r.json(); });
+  var qs = Object.keys(params).map(function(k){
+    var v = params[k];
+    if(v === undefined || v === null) v = '';
+    return encodeURIComponent(k)+'='+encodeURIComponent(v);
+  }).join('&');
+
+  return fetch(base + '?' + qs, { method:'GET', redirect:'follow' }).then(function(r){
+    if(!r.ok) throw new Error('HTTP ' + r.status);
+    return r.json();
+  }).catch(function(err){
+    if(err instanceof SyntaxError) throw new Error('Respons server bukan JSON valid — cek deployment Apps Script (harus "Anyone" access & versi terbaru).');
+    throw err;
+  });
 }
 
 function testConnection(spreadsheet){
