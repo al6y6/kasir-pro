@@ -1,6 +1,6 @@
 {
   "name": "Kasir Pro - POS Google Spreadsheet",
-  "short_name": "Kasir Pro",
+  "short_name": "Umi POS PRO",
   "description": "Aplikasi kasir modern dengan Google Spreadsheet sebagai database",
   "start_url": "./index.html",
   "display": "standalone",
