@@ -392,6 +392,7 @@ function apiCall(action, params, method){
   var ss = activeSpreadsheet();
   params.spreadsheetId = ss.spreadsheetId;
   params.action = action;
+  params._t = Date.now(); // cache-buster — cegah browser menyajikan respons lama/gagal yang ter-cache
 
   var qs = Object.keys(params).map(function(k){
     var v = params[k];
@@ -399,7 +400,7 @@ function apiCall(action, params, method){
     return encodeURIComponent(k)+'='+encodeURIComponent(v);
   }).join('&');
 
-  return fetch(base + '?' + qs, { method:'GET', redirect:'follow' }).then(function(r){
+  return fetch(base + '?' + qs, { method:'GET', redirect:'follow', cache:'no-store' }).then(function(r){
     if(!r.ok) throw new Error('HTTP ' + r.status);
     return r.json();
   }).catch(function(err){
@@ -1397,7 +1398,15 @@ function renderRiwayat(){
     });
   };
 }
-function fmtDate(d){ return d.toISOString().slice(0,10); }
+function fmtDate(d){
+  // PENTING: pakai komponen tanggal LOKAL perangkat, bukan toISOString() yang
+  // berbasis UTC — karena UTC bisa beda hari dengan WIB (misal dini hari),
+  // yang menyebabkan filter tanggal "Hari Ini" tidak menemukan transaksi.
+  var y = d.getFullYear();
+  var m = String(d.getMonth()+1).padStart(2,'0');
+  var day = String(d.getDate()).padStart(2,'0');
+  return y+'-'+m+'-'+day;
+}
 
 function openTrxDetail(invoice){
   openSheet(invoice, '<div class="empty"><span class="msr">hourglass_top</span><div>Memuat detail…</div></div>');
