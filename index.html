@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
-<title>Umibung Pro — POS</title>
+<title>Kasir Pro — POS</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1156C4">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -116,7 +116,7 @@ button{font-family:inherit; cursor:pointer;}
 .pcard .img img{width:100%; height:100%; object-fit:cover;}
 .pcard .img .msr{font-size:32px; color:var(--ink-300);}
 .badge{position:absolute; top:8px; left:8px; background:rgba(11,61,140,.85); color:#fff; font-size:10px; font-weight:700; padding:3px 8px; border-radius:8px;}
-.badge-low{position:absolute; top:8px; right:8px; background:var(--red-600); color:#fff; font-size:10px; font-weight:700; padding:3px 7px; border-radius:8px;}
+.badge-low{position:absolute; bottom:8px; right:8px; background:var(--red-600); color:#fff; font-size:10px; font-weight:700; padding:3px 7px; border-radius:8px;}
 .pcard .body{padding:10px 11px 11px;}
 .pcard .name{font-size:13px; font-weight:600; line-height:1.25; height:33px; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;}
 .pcard .price{font-family:var(--font-display); font-weight:800; color:var(--blue-700); font-size:15px; margin-top:5px;}
@@ -227,6 +227,34 @@ button{font-family:inherit; cursor:pointer;}
 .spreadcard .nm{font-weight:700; font-size:14.5px;}
 .spreadcard .url{font-size:11.5px; color:var(--ink-500); margin-top:2px; word-break:break-all;}
 .tag-active{background:var(--green); color:#fff; font-size:10px; font-weight:800; padding:3px 8px; border-radius:8px;}
+
+/* favorit star */
+.favstar{position:absolute; top:8px; right:8px; width:26px; height:26px; border-radius:8px; background:rgba(0,0,0,.32); border:none; display:flex; align-items:center; justify-content:center; z-index:2;}
+.favstar .msr{font-size:16px; color:#fff;}
+.favstar.active .msr{color:#FFD43B; font-variation-settings:'FILL' 1;}
+.list-view .favstar{top:6px; right:6px;}
+.badge-terlaris{position:absolute; bottom:8px; left:8px; background:var(--amber); color:#fff; font-size:9.5px; font-weight:800; padding:3px 7px; border-radius:8px; display:flex; align-items:center; gap:2px;}
+.list-view .badge-terlaris{bottom:auto; top:34px; left:8px;}
+
+/* low stock banner */
+.lowstock-banner{margin:10px 14px 0; background:var(--red-100); border:1px solid var(--red-600); border-radius:12px; padding:10px 12px; display:flex; align-items:center; gap:10px; font-size:12.5px; color:var(--red-700); font-weight:600;}
+.lowstock-banner .msr{color:var(--red-600);}
+.lowstock-banner button{margin-left:auto; background:none; border:none; color:var(--red-700);}
+
+/* login gate */
+.login-wrap{display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; padding:30px 26px;}
+.login-wrap .logo{width:74px; height:74px; border-radius:20px; background:linear-gradient(135deg,var(--blue-700),var(--blue-900)); display:flex; align-items:center; justify-content:center; margin-bottom:18px; box-shadow:var(--shadow-2);}
+.login-wrap .logo .msr{font-size:36px; color:#fff;}
+.login-wrap h2{margin:0 0 4px;}
+.login-wrap p{color:var(--ink-500); font-size:13px; margin:0 0 22px;}
+
+/* scanner */
+.scanner-modal{position:fixed; inset:0; background:#000; z-index:80; display:flex; flex-direction:column;}
+.scanner-modal video{flex:1; object-fit:cover; width:100%;}
+.scanner-modal .scan-frame{position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:70%; max-width:280px; aspect-ratio:1.6/1; border:3px solid var(--blue-500); border-radius:14px; box-shadow:0 0 0 2000px rgba(0,0,0,.45);}
+.scanner-modal .scan-top{position:absolute; top:0; left:0; right:0; padding:16px; display:flex; justify-content:space-between; align-items:center; z-index:2;}
+.scanner-modal .scan-top button{background:rgba(255,255,255,.2); border:none; color:#fff; width:38px; height:38px; border-radius:12px; display:flex; align-items:center; justify-content:center;}
+.scanner-modal .scan-hint{position:absolute; bottom:40px; left:0; right:0; text-align:center; color:#fff; font-size:13px; z-index:2;}
 </style>
 </head>
 <body data-theme="light">
@@ -238,6 +266,7 @@ button{font-family:inherit; cursor:pointer;}
   <div class="searchbar" id="searchbar">
     <span class="msr" style="font-size:19px;">search</span>
     <input id="searchInput" placeholder="Cari produk / barcode…" autocomplete="off">
+    <button style="background:none;width:22px;height:22px;" id="btnCameraScan" title="Scan Barcode"><span class="msr" style="font-size:19px;">qr_code_scanner</span></button>
     <button style="background:none;width:22px;height:22px;" id="btnCloseSearch"><span class="msr" style="font-size:18px;">close</span></button>
   </div>
   <button id="btnViewToggle" title="Tampilan"><span class="msr" id="btnViewToggleIcon">view_list</span></button>
@@ -253,7 +282,7 @@ button{font-family:inherit; cursor:pointer;}
 <div class="scrim" id="scrim"></div>
 <div class="drawer" id="drawer">
   <div class="drawer-head">
-    <div class="brand"><span class="msr">storefront</span> Kasir Pro</div>
+    <div class="brand" id="drawerBrand"><span class="msr" id="drawerLogoIcon">storefront</span><img id="drawerLogoImg" style="display:none;width:30px;height:30px;border-radius:8px;object-fit:cover;" alt="Logo Toko"> <span id="drawerBrandText">Kasir Pro</span></div>
     <div class="sub" id="drawerStoreName">Belum terhubung</div>
     <div class="drawer-sync" id="drawerSync"><span class="dot red"></span> Tidak Terhubung</div>
   </div>
@@ -269,9 +298,16 @@ button{font-family:inherit; cursor:pointer;}
     <div class="nav-sep">Sistem</div>
     <button class="nav-item" data-page="pengaturan"><span class="msr">settings</span> Pengaturan Spreadsheet</button>
   </nav>
-  <div class="drawer-foot">
-    <div class="theme-toggle"><span class="msr" style="font-size:19px;">dark_mode</span> Mode Gelap</div>
-    <button class="switch" id="themeSwitch"></button>
+  <div class="drawer-foot" style="flex-direction:column; align-items:stretch; gap:10px;">
+    <div id="drawerUserInfo" style="display:none; align-items:center; gap:10px; padding:4px 2px;">
+      <div style="width:36px;height:36px;border-radius:10px;background:var(--blue-100);color:var(--blue-700);display:flex;align-items:center;justify-content:center;flex-shrink:0;"><span class="msr">person</span></div>
+      <div style="flex:1;min-width:0;"><div id="drawerUserName" style="font-weight:700;font-size:13px;"></div><div id="drawerUserRole" style="font-size:11px;color:var(--ink-500);"></div></div>
+      <button class="iconbtn" id="btnLogout" title="Keluar"><span class="msr" style="font-size:19px;">logout</span></button>
+    </div>
+    <div class="theme-toggle" style="display:flex;align-items:center;justify-content:space-between;">
+      <span style="display:flex;align-items:center;gap:8px;"><span class="msr" style="font-size:19px;">dark_mode</span> Mode Gelap</span>
+      <button class="switch" id="themeSwitch"></button>
+    </div>
   </div>
 </div>
 
@@ -328,7 +364,12 @@ var state = {
   storeProfile: LS.get('storeProfile', { nama:'Toko Saya', alamat:'', telp:'', logo:'' }),
   receiptSettings: LS.get('receiptSettings', { footer:'Terima kasih atas kunjungan Anda!', showLogo:true }),
   defaultPajak: LS.get('defaultPajak', 0),
-  lowStockThreshold: LS.get('lowStockThreshold', 5)
+  lowStockThreshold: LS.get('lowStockThreshold', 5),
+  multiUserEnabled: LS.get('multiUserEnabled', false),
+  currentUser: LS.get('currentUser', null),
+  favorites: LS.get('favorites', []),
+  terlarisNames: [],
+  lastLowStockCount: LS.get('lastLowStockCount', 0)
 };
 
 function activeSpreadsheet(){ return state.spreadsheets.find(function(s){return s.active;}); }
@@ -463,6 +504,7 @@ function setPage(p){
 ===================================================================== */
 function render(){
   if(!activeSpreadsheet()){ renderGate(); return; }
+  if(state.multiUserEnabled && !state.currentUser){ renderLogin(); return; }
   if(state.page==='transaksi') renderTransaksi();
   else if(state.page==='dashboard') renderDashboard();
   else if(state.page==='riwayat') renderRiwayat();
@@ -475,6 +517,75 @@ function render(){
 /* =====================================================================
    GATE (belum terhubung)
 ===================================================================== */
+function renderLogin(){
+  document.getElementById('bottomCart').classList.add('hidden');
+  document.getElementById('fab').classList.add('hide');
+  var sp = state.storeProfile;
+  var logoHtml = sp.logo ? '<img src="'+sp.logo+'" style="width:100%;height:100%;object-fit:cover;border-radius:20px;">' : '<span class="msr">storefront</span>';
+  document.getElementById('page').innerHTML =
+    '<div class="login-wrap">'+
+      '<div class="logo">'+logoHtml+'</div>'+
+      '<h2>Masuk sebagai Kasir</h2>'+
+      '<p>Masukkan username & password akun Anda untuk mulai berjualan di '+(sp.nama||'toko ini')+'</p>'+
+      '<div class="stack">'+
+        '<div class="field"><label>Username</label><input id="loginUser" autocomplete="username"></div>'+
+        '<div class="field"><label>Password</label><input id="loginPass" type="password" autocomplete="current-password"></div>'+
+        '<button class="btn btn-primary btn-block" id="loginBtn">Masuk</button>'+
+      '</div>'+
+    '</div>';
+  function doLogin(){
+    var u = document.getElementById('loginUser').value.trim();
+    var p = document.getElementById('loginPass').value;
+    if(!u || !p){ toast('Isi username & password','error'); return; }
+    apiCall('login', {username:u, password:p}).then(function(res){
+      if(res.error){ toast(res.error,'error'); return; }
+      state.currentUser = res.user;
+      LS.set('currentUser', res.user);
+      state.kasirNama = res.user.Nama;
+      LS.set('kasirNama', state.kasirNama);
+      toast('Selamat datang, '+res.user.Nama, 'check_circle');
+      updateDrawerUser();
+      setPage('transaksi');
+    }).catch(function(err){ toast('Gagal login: '+err.message, 'error'); });
+  }
+  document.getElementById('loginBtn').onclick = doLogin;
+  document.getElementById('loginPass').onkeydown = function(e){ if(e.key==='Enter') doLogin(); };
+}
+
+function updateDrawerBrand(){
+  var icon = document.getElementById('drawerLogoIcon');
+  var img = document.getElementById('drawerLogoImg');
+  var text = document.getElementById('drawerBrandText');
+  var sp = state.storeProfile;
+  if(sp.logo){
+    img.src = sp.logo; img.style.display = 'inline-block'; icon.style.display = 'none';
+  } else {
+    img.style.display = 'none'; icon.style.display = 'inline';
+  }
+  text.textContent = sp.nama || 'Kasir Pro';
+}
+
+function updateDrawerUser(){
+  var wrap = document.getElementById('drawerUserInfo');
+  if(state.multiUserEnabled && state.currentUser){
+    wrap.style.display='flex';
+    document.getElementById('drawerUserName').textContent = state.currentUser.Nama;
+    document.getElementById('drawerUserRole').textContent = state.currentUser.Role || 'Kasir';
+  } else {
+    wrap.style.display='none';
+  }
+  var isAdmin = !state.multiUserEnabled || (state.currentUser && state.currentUser.Role === 'Admin');
+  document.querySelectorAll('.nav-item[data-page="produk"], .nav-item[data-page="kategori"], .nav-item[data-page="pengaturan"]').forEach(function(b){
+    b.style.display = isAdmin ? 'flex' : 'none';
+  });
+}
+document.getElementById('btnLogout').onclick = function(){
+  if(!confirm('Keluar dari sesi kasir ini?')) return;
+  state.currentUser = null; LS.set('currentUser', null);
+  drawer.classList.remove('open'); scrim.classList.remove('open');
+  render();
+};
+
 function renderGate(){
   document.getElementById('bottomCart').classList.add('hidden');
   document.getElementById('fab').classList.add('hide');
@@ -502,9 +613,19 @@ function renderPengaturan(){
   html += '<div class="card">'+
     '<div class="field"><label>Nama Toko</label><input id="stNama" value="'+sp.nama+'"></div>'+
     '<div class="field"><label>Alamat</label><input id="stAlamat" value="'+sp.alamat+'"></div>'+
-    '<div class="row2">'+
-      '<div class="field"><label>No. Telepon</label><input id="stTelp" value="'+sp.telp+'"></div>'+
-      '<div class="field"><label>URL Logo (opsional)</label><input id="stLogo" value="'+sp.logo+'"></div>'+
+    '<div class="field"><label>No. Telepon</label><input id="stTelp" value="'+sp.telp+'"></div>'+
+    '<div class="field">'+
+      '<label>Logo Toko</label>'+
+      '<div style="display:flex;align-items:center;gap:12px;">'+
+        '<div id="stLogoPreview" style="width:56px;height:56px;border-radius:14px;background:var(--ink-100);display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0;border:1.5px solid var(--line);">'+
+          (sp.logo ? '<img src="'+sp.logo+'" style="width:100%;height:100%;object-fit:cover;">' : '<span class="msr" style="color:var(--ink-300);">storefront</span>')+
+        '</div>'+
+        '<div style="flex:1;display:flex;flex-direction:column;gap:6px;">'+
+          '<label class="btn btn-outline btn-sm" style="justify-content:center;" for="stLogoFile"><span class="msr" style="font-size:16px;">upload</span> Ganti Logo</label>'+
+          '<input type="file" id="stLogoFile" accept="image/*" style="display:none;">'+
+          (sp.logo ? '<button class="btn btn-ghost btn-sm" id="stLogoRemove"><span class="msr" style="font-size:16px;">delete</span> Hapus Logo</button>' : '')+
+        '</div>'+
+      '</div>'+
     '</div>'+
     '<button class="btn btn-primary btn-sm" id="stSave">Simpan Profil Toko</button>'+
   '</div>';
@@ -569,6 +690,17 @@ function renderPengaturan(){
   html += '<div class="section-title">Kasir</div>';
   html += '<div class="card"><div class="field" style="margin-bottom:0;"><label>Nama Kasir Aktif</label><input id="kasirNamaInput" value="'+state.kasirNama+'"></div></div>';
 
+  html += '<div class="section-title">Multi User & Hak Akses</div>';
+  html += '<div class="card">'+
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">'+
+      '<span style="font-size:13px;font-weight:600;">Aktifkan Login Multi User</span>'+
+      '<button class="switch '+(state.multiUserEnabled?'on':'')+'" id="muToggle"></button>'+
+    '</div>'+
+    '<div style="font-size:12px;color:var(--ink-500);margin-bottom:10px;">Bila aktif, setiap kasir wajib login dengan akun sendiri. Role "Kasir" tidak bisa mengakses Produk/Kategori/Pengaturan.</div>'+
+    '<div id="kasirListWrap"><div style="font-size:12px;color:var(--ink-500);">Memuat daftar akun…</div></div>'+
+    '<button class="btn btn-outline btn-sm btn-block" id="btnAddKasir" style="margin-top:10px;"><span class="msr">person_add</span> Tambah Akun Kasir</button>'+
+  '</div>';
+
   html += '<div class="section-title">Backup & Restore</div>';
   html += '<div class="card"><div style="display:flex;gap:8px;flex-wrap:wrap;">'+
     '<button class="btn btn-sm btn-outline" id="btnExportCsv"><span class="msr">download</span> Export CSV Produk</button>'+
@@ -578,9 +710,34 @@ function renderPengaturan(){
   document.getElementById('page').innerHTML = html;
 
   document.getElementById('stSave').onclick = function(){
-    state.storeProfile = { nama: document.getElementById('stNama').value.trim()||'Toko Saya', alamat: document.getElementById('stAlamat').value.trim(), telp: document.getElementById('stTelp').value.trim(), logo: document.getElementById('stLogo').value.trim() };
+    state.storeProfile.nama = document.getElementById('stNama').value.trim()||'Toko Saya';
+    state.storeProfile.alamat = document.getElementById('stAlamat').value.trim();
+    state.storeProfile.telp = document.getElementById('stTelp').value.trim();
     LS.set('storeProfile', state.storeProfile);
+    updateDrawerBrand();
     toast('Profil toko disimpan','check_circle');
+  };
+  document.getElementById('stLogoFile').onchange = function(e){
+    var file = e.target.files[0];
+    if(!file) return;
+    if(file.size > 1024*1024){ toast('Ukuran logo maksimal 1MB', 'error'); return; }
+    var reader = new FileReader();
+    reader.onload = function(ev){
+      state.storeProfile.logo = ev.target.result;
+      LS.set('storeProfile', state.storeProfile);
+      updateDrawerBrand();
+      toast('Logo diperbarui','check_circle');
+      renderPengaturan();
+    };
+    reader.readAsDataURL(file);
+  };
+  var stLogoRemoveBtn = document.getElementById('stLogoRemove');
+  if(stLogoRemoveBtn) stLogoRemoveBtn.onclick = function(){
+    state.storeProfile.logo = '';
+    LS.set('storeProfile', state.storeProfile);
+    updateDrawerBrand();
+    toast('Logo dihapus','check_circle');
+    renderPengaturan();
   };
   document.getElementById('rsLogoToggle').onclick = function(){ state.receiptSettings.showLogo = !state.receiptSettings.showLogo; renderPengaturan(); };
   document.getElementById('rsSave').onclick = function(){
@@ -596,6 +753,23 @@ function renderPengaturan(){
     state.checkout.pajakPersen = state.defaultPajak;
     toast('Pengaturan pajak & stok disimpan','check_circle');
   };
+
+  document.getElementById('muToggle').onclick = function(){
+    state.multiUserEnabled = !state.multiUserEnabled;
+    LS.set('multiUserEnabled', state.multiUserEnabled);
+    updateDrawerUser();
+    toast(state.multiUserEnabled ? 'Multi user diaktifkan' : 'Multi user dimatikan', 'check_circle');
+    renderPengaturan();
+  };
+  document.getElementById('btnAddKasir').onclick = openAddKasirSheet;
+  if(activeSpreadsheet()){
+    apiCall('getKasir').then(function(res){
+      var list = res.data || [];
+      document.getElementById('kasirListWrap').innerHTML = list.length ? list.map(function(k){
+        return '<div class="listrow"><span>'+k.Nama+' <span style="color:var(--ink-500);">('+k.Username+')</span></span><span style="font-size:11px;font-weight:700;color:var(--blue-700);">'+k.Role+'</span></div>';
+      }).join('') : '<div style="font-size:12px;color:var(--ink-500);">Belum ada akun kasir ditambahkan</div>';
+    }).catch(function(){ document.getElementById('kasirListWrap').innerHTML = '<div style="font-size:12px;color:var(--ink-500);">Gagal memuat daftar akun</div>'; });
+  }
   document.getElementById('btnAddSpread').onclick = openAddSpreadsheetSheet;
   document.getElementById('cacheToggle').onclick = function(){ state.cacheEnabled = !state.cacheEnabled; LS.set('cacheEnabled', state.cacheEnabled); renderPengaturan(); };
   document.getElementById('kasirNamaInput').onchange = function(e){ state.kasirNama = e.target.value; LS.set('kasirNama', state.kasirNama); };
@@ -613,6 +787,24 @@ function renderPengaturan(){
       if(act==='edit'){ openAddSpreadsheetSheet(s); }
     };
   });
+}
+
+function openAddKasirSheet(){
+  var html =
+    '<div class="field"><label>Nama</label><input id="kfNama"></div>'+
+    '<div class="field"><label>Username</label><input id="kfUsername" autocomplete="off"></div>'+
+    '<div class="field"><label>Password</label><input id="kfPassword" type="password" autocomplete="new-password"></div>'+
+    '<div class="field"><label>Role</label><select id="kfRole"><option>Kasir</option><option>Admin</option></select></div>'+
+    '<button class="btn btn-primary btn-block" id="kfSave">Simpan Akun</button>';
+  openSheet('Tambah Akun Kasir', html);
+  document.getElementById('kfSave').onclick = function(){
+    var payload = { nama:document.getElementById('kfNama').value.trim(), username:document.getElementById('kfUsername').value.trim(), password:document.getElementById('kfPassword').value, role:document.getElementById('kfRole').value };
+    if(!payload.nama || !payload.username || !payload.password){ toast('Lengkapi semua field','error'); return; }
+    apiCall('addKasir', payload).then(function(res){
+      if(res.error){ toast(res.error,'error'); return; }
+      toast('Akun kasir ditambahkan','check_circle'); closeSheet(); renderPengaturan();
+    });
+  };
 }
 
 function openAddSpreadsheetSheet(existing){
@@ -634,9 +826,18 @@ function openAddSpreadsheetSheet(existing){
   document.getElementById('fUrl').oninput = function(e){ document.getElementById('fId').value = extractId(e.target.value); };
   if(existing) document.getElementById('fId').value = existing.spreadsheetId;
 
+  function isValidWebAppUrl(u){
+    return /^https:\/\/script\.google\.com\/macros\/s\/.+\/exec$/.test(u.trim());
+  }
+
   document.getElementById('fTest').onclick = function(){
-    var cand = { url: document.getElementById('fWebapp').value.trim(), spreadsheetId: document.getElementById('fId').value.trim() };
+    var urlVal = document.getElementById('fWebapp').value.trim();
+    var cand = { url: urlVal, spreadsheetId: document.getElementById('fId').value.trim() };
     if(!cand.url || !cand.spreadsheetId){ toast('Lengkapi URL Web App & Spreadsheet dahulu','error'); return; }
+    if(!isValidWebAppUrl(cand.url)){
+      toast('URL Web App tidak valid. Harus diawali https://script.google.com/macros/s/ dan diakhiri /exec, tanpa teks lain.', 'error');
+      return;
+    }
     toast('Menguji koneksi…','sync');
     testConnection(cand).then(function(r){
       toast(r.status==='ok'?'Koneksi berhasil ✔':'Gagal: '+(r.error||'periksa URL'), r.status==='ok'?'check_circle':'error');
@@ -649,6 +850,10 @@ function openAddSpreadsheetSheet(existing){
     var rawUrl = document.getElementById('fUrl').value.trim();
     var id = document.getElementById('fId').value.trim();
     if(!nama || !webapp || !id){ toast('Lengkapi semua field','error'); return; }
+    if(!isValidWebAppUrl(webapp)){
+      toast('URL Web App tidak valid. Harus diawali https://script.google.com/macros/s/ dan diakhiri /exec, tanpa teks lain.', 'error');
+      return;
+    }
     if(existing){
       existing.nama=nama; existing.url=webapp; existing.rawUrl=rawUrl; existing.spreadsheetId=id;
     } else {
@@ -681,6 +886,17 @@ function connectAndLoad(){
     updateSyncBadge();
     flushOfflineQueue();
     render();
+    // ambil data terlaris & cek stok menipis (tidak blocking, gagal pun aman)
+    apiCall('getDashboard', { threshold: state.lowStockThreshold }).then(function(d){
+      state.terlarisNames = (d.produkTerlaris||[]).map(function(p){ return p.nama; });
+      var lowCount = (d.produkHampirHabis||[]).length;
+      if(lowCount > 0 && lowCount !== state.lastLowStockCount){
+        toast(lowCount+' produk stok menipis! Cek Dashboard.', 'warning');
+      }
+      state.lastLowStockCount = lowCount;
+      LS.set('lastLowStockCount', lowCount);
+      if(state.page==='transaksi') renderTransaksi();
+    }).catch(function(){});
   }).catch(function(err){
     state.connected = false; state.syncing = false; updateSyncBadge();
     toast('Gagal terhubung: '+err.message, 'error');
@@ -720,7 +936,11 @@ window.addEventListener('online', flushOfflineQueue);
 ===================================================================== */
 function filteredProducts(){
   var list = state.produk.filter(function(p){ return p.Status !== 'Nonaktif'; });
-  if(state.categoryFilter !== 'Semua') list = list.filter(function(p){ return p.Kategori === state.categoryFilter; });
+  if(state.categoryFilter === '⭐ Favorit'){
+    list = list.filter(function(p){ return state.favorites.indexOf(String(p.ID))>-1; });
+  } else if(state.categoryFilter !== 'Semua'){
+    list = list.filter(function(p){ return p.Kategori === state.categoryFilter; });
+  }
   if(state.searchQuery){
     var q = state.searchQuery.toLowerCase();
     list = list.filter(function(p){ return String(p.Nama).toLowerCase().indexOf(q)>-1 || String(p.Barcode).indexOf(q)>-1 || String(p.SKU).toLowerCase().indexOf(q)>-1; });
@@ -737,7 +957,7 @@ function filteredProducts(){
 }
 
 function renderTransaksi(){
-  var cats = ['Semua'].concat(state.kategori.slice().sort(function(a,b){return a.Urutan-b.Urutan;}).map(function(c){return c.Nama;}));
+  var cats = ['Semua','⭐ Favorit'].concat(state.kategori.slice().sort(function(a,b){return a.Urutan-b.Urutan;}).map(function(c){return c.Nama;}));
   var chips = cats.map(function(c){ return '<button class="chip '+(state.categoryFilter===c?'active':'')+'" data-cat="'+c+'">'+c+'</button>'; }).join('');
   var list = filteredProducts();
 
@@ -750,9 +970,13 @@ function renderTransaksi(){
     gridHtml = list.map(function(p){
       var inCart = state.cart.find(function(c){ return c.id===p.ID; });
       var low = Number(p.Stok) <= state.lowStockThreshold;
+      var isFav = state.favorites.indexOf(String(p.ID))>-1;
+      var isTerlaris = state.terlarisNames.indexOf(p.Nama)>-1;
       return '<div class="pcard" data-id="'+p.ID+'">'+
+        '<button class="favstar '+(isFav?'active':'')+'" data-fav="'+p.ID+'"><span class="msr">star</span></button>'+
         '<div class="img">'+(p.Foto?('<img src="'+p.Foto+'" loading="lazy">'):('<span class="msr">'+catIcon(p.Kategori)+'</span>'))+
           '<span class="badge">'+ (p.Kategori||'') +'</span>'+
+          (isTerlaris?'<span class="badge-terlaris"><span class="msr" style="font-size:11px;">local_fire_department</span>Terlaris</span>':'')+
           (low?'<span class="badge-low">Stok '+p.Stok+'</span>':'')+
         '</div>'+
         '<div class="body">'+
@@ -778,8 +1002,17 @@ function renderTransaksi(){
   document.querySelectorAll('[data-act="add"]').forEach(function(b){ b.onclick=function(){ addToCart(b.getAttribute('data-id')); }; });
   document.querySelectorAll('[data-act="inc"]').forEach(function(b){ b.onclick=function(){ changeQty(b.getAttribute('data-id'), 1); }; });
   document.querySelectorAll('[data-act="dec"]').forEach(function(b){ b.onclick=function(){ changeQty(b.getAttribute('data-id'), -1); }; });
+  document.querySelectorAll('[data-fav]').forEach(function(b){ b.onclick=function(e){ e.stopPropagation(); toggleFavorite(b.getAttribute('data-fav')); }; });
 
   updateCartUI();
+}
+
+function toggleFavorite(id){
+  id = String(id);
+  var idx = state.favorites.indexOf(id);
+  if(idx>-1) state.favorites.splice(idx,1); else state.favorites.push(id);
+  LS.set('favorites', state.favorites);
+  renderTransaksi();
 }
 
 function addToCart(id){
@@ -814,6 +1047,59 @@ var searchbar = document.getElementById('searchbar'), searchInput = document.get
 document.getElementById('btnSearch').onclick = function(){ searchbar.classList.add('active'); searchInput.focus(); };
 document.getElementById('btnCloseSearch').onclick = function(){ searchbar.classList.remove('active'); state.searchQuery=''; renderTransaksi(); };
 searchInput.oninput = function(e){ state.searchQuery = e.target.value; renderTransaksi(); };
+
+document.getElementById('btnCameraScan').onclick = openBarcodeScanner;
+function openBarcodeScanner(){
+  if(!('BarcodeDetector' in window)){
+    toast('Scan kamera tidak didukung browser ini. Gunakan scanner USB/Bluetooth, atau ketik manual.', 'error');
+    return;
+  }
+  var modal = document.createElement('div');
+  modal.className = 'scanner-modal';
+  modal.innerHTML =
+    '<div class="scan-top"><button id="scanClose"><span class="msr">close</span></button><div style="color:#fff;font-weight:700;">Scan Barcode</div><div style="width:38px;"></div></div>'+
+    '<video id="scanVideo" autoplay playsinline muted></video>'+
+    '<div class="scan-frame"></div>'+
+    '<div class="scan-hint">Arahkan kamera ke barcode produk</div>';
+  document.body.appendChild(modal);
+  var video = document.getElementById('scanVideo');
+  var stream, detector, rafId, stopped=false;
+
+  function closeScanner(){
+    stopped = true;
+    if(rafId) cancelAnimationFrame(rafId);
+    if(stream) stream.getTracks().forEach(function(t){ t.stop(); });
+    modal.remove();
+  }
+  document.getElementById('scanClose').onclick = closeScanner;
+
+  navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } }).then(function(s){
+    stream = s; video.srcObject = s;
+    try{ detector = new BarcodeDetector({ formats: ['ean_13','ean_8','code_128','code_39','upc_a','upc_e','qr_code'] }); }
+    catch(e){ detector = new BarcodeDetector(); }
+    function loop(){
+      if(stopped) return;
+      detector.detect(video).then(function(codes){
+        if(stopped) return;
+        if(codes.length){
+          var val = codes[0].rawValue;
+          closeScanner();
+          state.searchQuery = val;
+          searchInput.value = val;
+          searchbar.classList.add('active');
+          renderTransaksi();
+          toast('Barcode terdeteksi: '+val, 'check_circle');
+        } else {
+          rafId = requestAnimationFrame(loop);
+        }
+      }).catch(function(){ if(!stopped) rafId = requestAnimationFrame(loop); });
+    }
+    loop();
+  }).catch(function(err){
+    toast('Tidak bisa mengakses kamera: '+err.message, 'error');
+    closeScanner();
+  });
+}
 
 document.getElementById('btnViewToggle').onclick = function(){
   state.viewMode = state.viewMode==='list' ? 'grid' : 'list';
@@ -941,6 +1227,59 @@ function finalizeTransaction(sub, diskon, pajak, total, bayar){
   });
 }
 
+function printBluetooth(invoice, items, sub, diskon, pajak, total, bayar, kembalian){
+  if(!navigator.bluetooth){
+    toast('Bluetooth Printing hanya didukung Chrome/Edge di Android. Browser ini tidak mendukungnya.', 'error');
+    return;
+  }
+  toast('Mencari printer Bluetooth…', 'bluetooth_searching');
+  var SERVICE = '000018f0-0000-1000-8000-00805f9b34fb';
+  var CHAR = '00002af1-0000-1000-8000-00805f9b34fb';
+  navigator.bluetooth.requestDevice({
+    filters: [{ services: [SERVICE] }],
+    optionalServices: [SERVICE]
+  }).then(function(device){
+    return device.gatt.connect();
+  }).then(function(server){
+    return server.getPrimaryService(SERVICE);
+  }).then(function(service){
+    return service.getCharacteristic(CHAR);
+  }).then(function(characteristic){
+    var sp = state.storeProfile;
+    var out = [];
+    out.push('\x1B\x40'); // reset
+    out.push('\x1B\x61\x01'); // center align
+    out.push((sp.nama||'Toko Saya')+'\n');
+    if(sp.alamat) out.push(sp.alamat+'\n');
+    if(sp.telp) out.push(sp.telp+'\n');
+    out.push('--------------------------------\n');
+    out.push('\x1B\x61\x00'); // left align
+    out.push(invoice+'\n--------------------------------\n');
+    items.forEach(function(c){ out.push(c.nama+' x'+c.qty+'\n'+'   '+rupiah(c.qty*c.harga)+'\n'); });
+    out.push('--------------------------------\n');
+    out.push('Subtotal : '+rupiah(sub)+'\n');
+    out.push('Diskon   : '+rupiah(diskon)+'\n');
+    out.push('Pajak    : '+rupiah(pajak)+'\n');
+    out.push('TOTAL    : '+rupiah(total)+'\n');
+    out.push('Bayar    : '+rupiah(bayar)+'\n');
+    out.push('Kembali  : '+rupiah(Math.max(kembalian,0))+'\n\n');
+    if(state.receiptSettings.footer) out.push(state.receiptSettings.footer+'\n');
+    out.push('\n\n\n\x1D\x56\x00'); // feed + cut (jika printer mendukung)
+
+    var bytes = new TextEncoder().encode(out.join(''));
+    var chunkSize = 180, i = 0;
+    function sendChunk(){
+      if(i >= bytes.length){ toast('Struk terkirim ke printer ✔','check_circle'); return; }
+      var chunk = bytes.slice(i, i+chunkSize);
+      characteristic.writeValue(chunk).then(function(){ i += chunkSize; setTimeout(sendChunk, 60); })
+        .catch(function(err){ toast('Gagal kirim ke printer: '+err.message, 'error'); });
+    }
+    sendChunk();
+  }).catch(function(err){
+    toast('Gagal terhubung ke printer: '+err.message+' — coba printer lain atau gunakan Cetak/PDF.', 'error');
+  });
+}
+
 function showReceipt(invoice, items, sub, diskon, pajak, total, bayar, kembalian){
   var lines = items.map(function(c){ return '<div class="sumrow"><span>'+c.nama+' x'+c.qty+'</span><span class="tabular">'+rupiah(c.qty*c.harga)+'</span></div>'; }).join('');
   var sp = state.storeProfile;
@@ -965,12 +1304,15 @@ function showReceipt(invoice, items, sub, diskon, pajak, total, bayar, kembalian
     (state.receiptSettings.footer ? '<div style="text-align:center;font-size:11.5px;color:var(--ink-500);margin-top:10px;padding-top:10px;border-top:1px dashed var(--line);">'+state.receiptSettings.footer+'</div>' : '')+
     '<div class="stack" style="max-width:none;margin-top:12px;">'+
       '<button class="btn btn-outline btn-block" id="btnPrint"><span class="msr">print</span> Cetak / Simpan PDF</button>'+
+      '<button class="btn btn-outline btn-block" id="btnBtPrint"><span class="msr">bluetooth</span> Cetak Bluetooth (Thermal)</button>'+
+      '<div style="font-size:10.5px;color:var(--ink-500);text-align:center;">Kompatibilitas tergantung merek printer • hanya Chrome/Edge Android</div>'+
       '<button class="btn btn-outline btn-block" id="btnWa"><span class="msr">share</span> Bagikan via WhatsApp</button>'+
       '<button class="btn btn-primary btn-block" id="btnCloseReceipt">Selesai</button>'+
     '</div>';
   openSheet('Struk Transaksi', html);
   document.getElementById('btnCloseReceipt').onclick = closeSheet;
   document.getElementById('btnPrint').onclick = function(){ window.print(); };
+  document.getElementById('btnBtPrint').onclick = function(){ printBluetooth(invoice, items, sub, diskon, pajak, total, bayar, kembalian); };
   document.getElementById('btnWa').onclick = function(){
     var text = 'Struk '+invoice+'\\n' + items.map(function(c){return c.nama+' x'+c.qty+' = '+rupiah(c.qty*c.harga);}).join('\\n') + '\\nTotal: '+rupiah(total);
     window.open('https://wa.me/?text='+encodeURIComponent(text), '_blank');
@@ -1250,6 +1592,8 @@ document.getElementById('fab').onclick = function(){
 ===================================================================== */
 function boot(){
   updateSyncBadge();
+  updateDrawerUser();
+  updateDrawerBrand();
   if(activeSpreadsheet()){ connectAndLoad(); } 
   setPage(state.page);
   setupAutoSync();
