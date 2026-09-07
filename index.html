@@ -295,6 +295,8 @@ button{font-family:inherit; cursor:pointer;}
     <div class="nav-sep">Master Data</div>
     <button class="nav-item" data-page="produk"><span class="msr">inventory_2</span> Produk</button>
     <button class="nav-item" data-page="kategori"><span class="msr">category</span> Kategori</button>
+    <button class="nav-item" data-page="member"><span class="msr">loyalty</span> Member & Poin</button>
+    <button class="nav-item" data-page="voucher"><span class="msr">confirmation_number</span> Voucher & Promo</button>
     <div class="nav-sep">Sistem</div>
     <button class="nav-item" data-page="pengaturan"><span class="msr">settings</span> Pengaturan Spreadsheet</button>
   </nav>
@@ -359,7 +361,8 @@ var state = {
   kasirNama: LS.get('kasirNama','Kasir 1'),
   offlineQueue: LS.get('offline_queue', []),
   cacheEnabled: LS.get('cacheEnabled', true),
-  checkout: { diskon:0, pajakPersen: LS.get('defaultPajak', 0), metode:'Tunai', uangDibayar:0 },
+  checkout: { diskon:0, pajakPersen: LS.get('defaultPajak', 0), metode:'Tunai', uangDibayar:0, memberId:null, memberNama:'', memberPoin:0, poinDitukar:0, voucherCode:'', voucherDiskon:0 },
+  loyaltySettings: LS.get('loyaltySettings', { poinPerRp:10000, nilaiPerPoin:100 }),
   reportPeriod: 'harian',
   storeProfile: LS.get('storeProfile', { nama:'Toko Saya', alamat:'', telp:'', logo:'' }),
   receiptSettings: LS.get('receiptSettings', { footer:'Terima kasih atas kunjungan Anda!', showLogo:true }),
@@ -479,7 +482,7 @@ applyTheme();
 function setPage(p){
   state.page = p;
   document.querySelectorAll('.nav-item').forEach(function(b){ b.classList.toggle('active', b.getAttribute('data-page')===p); });
-  document.getElementById('fab').classList.toggle('hide', !(p==='produk'||p==='kategori'));
+  document.getElementById('fab').classList.toggle('hide', !(p==='produk'||p==='kategori'||p==='member'||p==='voucher'));
   document.getElementById('bottomCart').classList.toggle('hidden', !(p==='transaksi' && state.cart.length));
   var titles = {
     transaksi:['Transaksi Baru','Pilih produk untuk mulai'],
@@ -488,6 +491,8 @@ function setPage(p){
     laporan:['Laporan','Analisa performa penjualan'],
     produk:['Produk','Kelola katalog produk'],
     kategori:['Kategori','Kelola kategori produk'],
+    member:['Member & Poin','Kelola pelanggan & loyalti'],
+    voucher:['Voucher & Promo','Kelola kode diskon'],
     pengaturan:['Pengaturan','Google Spreadsheet & sinkronisasi']
   };
   document.getElementById('appbarTitle').innerHTML = titles[p][0] + '<small id="appbarSub">'+titles[p][1]+'</small>';
@@ -512,6 +517,8 @@ function render(){
   else if(state.page==='laporan') renderLaporan();
   else if(state.page==='produk') renderProdukList();
   else if(state.page==='kategori') renderKategoriList();
+  else if(state.page==='member') renderMemberList();
+  else if(state.page==='voucher') renderVoucherList();
   else if(state.page==='pengaturan') renderPengaturan();
 }
 
@@ -650,6 +657,16 @@ function renderPengaturan(){
     '<button class="btn btn-primary btn-sm" id="taxSave">Simpan</button>'+
   '</div>';
 
+  html += '<div class="section-title">Program Loyalti</div>';
+  html += '<div class="card">'+
+    '<div class="row2">'+
+      '<div class="field"><label>Belanja Rp berapa = 1 poin</label><input id="loyPoinPerRp" type="number" value="'+state.loyaltySettings.poinPerRp+'"></div>'+
+      '<div class="field"><label>Nilai Tukar per Poin (Rp)</label><input id="loyNilaiPerPoin" type="number" value="'+state.loyaltySettings.nilaiPerPoin+'"></div>'+
+    '</div>'+
+    '<div style="font-size:11.5px;color:var(--ink-500);margin-bottom:10px;">Contoh: belanja Rp10.000 = 1 poin, dan 1 poin bisa ditukar jadi diskon Rp100 saat checkout.</div>'+
+    '<button class="btn btn-primary btn-sm" id="loySave">Simpan Pengaturan Loyalti</button>'+
+  '</div>';
+
   html += '<div class="section-title">Status Koneksi</div>';
   html += '<div class="card">'+
     '<div style="display:flex;align-items:center;gap:10px;">'+
@@ -753,6 +770,16 @@ function renderPengaturan(){
     LS.set('lowStockThreshold', state.lowStockThreshold);
     state.checkout.pajakPersen = state.defaultPajak;
     toast('Pengaturan pajak & stok disimpan','check_circle');
+  };
+
+  document.getElementById('loySave').onclick = function(){
+    state.loyaltySettings.poinPerRp = Number(document.getElementById('loyPoinPerRp').value)||10000;
+    state.loyaltySettings.nilaiPerPoin = Number(document.getElementById('loyNilaiPerPoin').value)||100;
+    LS.set('loyaltySettings', state.loyaltySettings);
+    Promise.all([
+      apiCall('setSetting', { key:'poinPerRp', value:state.loyaltySettings.poinPerRp }, 'POST'),
+      apiCall('setSetting', { key:'nilaiPerPoin', value:state.loyaltySettings.nilaiPerPoin }, 'POST')
+    ]).then(function(){ toast('Pengaturan loyalti disimpan','check_circle'); }).catch(function(){ toast('Tersimpan lokal, gagal sinkron ke server','error'); });
   };
 
   document.getElementById('muToggle').onclick = function(){
@@ -897,6 +924,12 @@ function connectAndLoad(){
       state.lastLowStockCount = lowCount;
       LS.set('lastLowStockCount', lowCount);
       if(state.page==='transaksi') renderTransaksi();
+    }).catch(function(){});
+    apiCall('getSettings').then(function(res){
+      var s = res.data || {};
+      state.loyaltySettings.poinPerRp = Number(s.poinPerRp) || state.loyaltySettings.poinPerRp;
+      state.loyaltySettings.nilaiPerPoin = Number(s.nilaiPerPoin) || state.loyaltySettings.nilaiPerPoin;
+      LS.set('loyaltySettings', state.loyaltySettings);
     }).catch(function(){});
   }).catch(function(err){
     state.connected = false; state.syncing = false; updateSyncBadge();
@@ -1125,43 +1158,114 @@ function openCartSheet(){
       '<div class="qtystep"><button data-dec="'+c.id+'"><span class="msr" style="font-size:16px;">remove</span></button><span>'+c.qty+'</span><button data-inc="'+c.id+'"><span class="msr" style="font-size:16px;">add</span></button></div></div>';
   }).join('');
   var subtotal = state.cart.reduce(function(s,c){ return s+c.qty*c.harga; }, 0);
+  var ck = state.checkout;
+
+  var memberHtml = ck.memberId ?
+    ('<div class="listrow" style="align-items:center;"><span style="display:flex;align-items:center;gap:8px;"><span class="msr" style="color:var(--blue-700);">verified</span>'+ck.memberNama+' ('+ck.memberPoin+' poin)</span><button class="iconbtn" id="ckMemberRemove" style="width:28px;height:28px;"><span class="msr" style="font-size:16px;">close</span></button></div>'+
+     '<div class="field" style="margin-top:6px;"><label>Tukar Poin (1 poin = '+rupiah(state.loyaltySettings.nilaiPerPoin)+')</label><input id="ckPoin" type="number" min="0" max="'+ck.memberPoin+'" value="'+ck.poinDitukar+'"></div>')
+    : '<button class="btn btn-outline btn-block" id="ckMemberPick"><span class="msr">person_search</span> Pilih Member (opsional)</button>';
+
+  var voucherHtml = ck.voucherCode ?
+    ('<div class="listrow" style="align-items:center;"><span style="display:flex;align-items:center;gap:8px;"><span class="msr" style="color:var(--green);">confirmation_number</span>'+ck.voucherCode+' (- '+rupiah(ck.voucherDiskon)+')</span><button class="iconbtn" id="ckVoucherRemove" style="width:28px;height:28px;"><span class="msr" style="font-size:16px;">close</span></button></div>')
+    : '<div style="display:flex;gap:8px;"><input id="ckVoucherInput" placeholder="Kode voucher…" style="flex:1;border:1.5px solid var(--line);border-radius:12px;padding:11px 13px;font-size:14px;background:var(--surface);"><button class="btn btn-outline btn-sm" id="ckVoucherApply">Pakai</button></div>';
 
   var html = lines +
+    '<div class="field" style="margin-top:14px;margin-bottom:6px;"><label>Member</label></div>'+memberHtml+
+    '<div class="field" style="margin-top:14px;margin-bottom:6px;"><label>Kode Voucher</label></div>'+voucherHtml+
     '<div class="field" style="margin-top:14px;"><label>Catatan Pesanan</label><input id="ckNote" placeholder="Opsional…"></div>'+
     '<div class="row2">'+
-      '<div class="field"><label>Diskon (Rp)</label><input id="ckDiskon" type="number" value="'+state.checkout.diskon+'"></div>'+
-      '<div class="field"><label>Pajak PPN (%)</label><input id="ckPajak" type="number" value="'+state.checkout.pajakPersen+'"></div>'+
+      '<div class="field"><label>Diskon Tambahan (Rp)</label><input id="ckDiskon" type="number" value="'+ck.diskon+'"></div>'+
+      '<div class="field"><label>Pajak PPN (%)</label><input id="ckPajak" type="number" value="'+ck.pajakPersen+'"></div>'+
     '</div>'+
     '<div id="ckSummary"></div>'+
     '<button class="btn btn-danger btn-block" id="ckNext" style="margin-top:6px;">Lanjut ke Pembayaran <span class="msr">arrow_forward</span></button>';
   openSheet('Keranjang ('+state.cart.length+')', html);
 
   function recalc(){
-    var diskon = Number(document.getElementById('ckDiskon').value)||0;
+    var diskonManual = Number(document.getElementById('ckDiskon').value)||0;
     var pajakP = Number(document.getElementById('ckPajak').value)||0;
+    var poinInput = document.getElementById('ckPoin');
+    var poinDitukar = poinInput ? Math.min(Number(poinInput.value)||0, ck.memberPoin) : 0;
+    var diskonPoin = poinDitukar * state.loyaltySettings.nilaiPerPoin;
     var sub = state.cart.reduce(function(s,c){ return s+c.qty*c.harga; }, 0);
-    var pajak = Math.round((sub-diskon) * pajakP/100);
-    var total = sub - diskon + pajak;
-    state.checkout.diskon = diskon; state.checkout.pajakPersen = pajakP;
+    var totalDiskon = diskonManual + ck.voucherDiskon + diskonPoin;
+    if(totalDiskon > sub) totalDiskon = sub;
+    var pajak = Math.round((sub-totalDiskon) * pajakP/100);
+    var total = sub - totalDiskon + pajak;
+    ck.diskon = diskonManual; ck.pajakPersen = pajakP; ck.poinDitukar = poinDitukar;
     document.getElementById('ckSummary').innerHTML =
       '<div class="sumrow"><span>Subtotal</span><span class="tabular">'+rupiah(sub)+'</span></div>'+
-      '<div class="sumrow"><span>Diskon</span><span class="tabular">- '+rupiah(diskon)+'</span></div>'+
+      (diskonManual?'<div class="sumrow"><span>Diskon</span><span class="tabular">- '+rupiah(diskonManual)+'</span></div>':'')+
+      (ck.voucherDiskon?'<div class="sumrow"><span>Voucher ('+ck.voucherCode+')</span><span class="tabular">- '+rupiah(ck.voucherDiskon)+'</span></div>':'')+
+      (diskonPoin?'<div class="sumrow"><span>Tukar Poin ('+poinDitukar+')</span><span class="tabular">- '+rupiah(diskonPoin)+'</span></div>':'')+
       '<div class="sumrow"><span>Pajak (PPN '+pajakP+'%)</span><span class="tabular">'+rupiah(pajak)+'</span></div>'+
       '<div class="sumrow total"><span>Total</span><span class="tabular">'+rupiah(total)+'</span></div>';
   }
   recalc();
   document.getElementById('ckDiskon').oninput = recalc;
   document.getElementById('ckPajak').oninput = recalc;
+  var ckPoinEl = document.getElementById('ckPoin'); if(ckPoinEl) ckPoinEl.oninput = recalc;
+
+  var memberRemoveBtn = document.getElementById('ckMemberRemove');
+  if(memberRemoveBtn) memberRemoveBtn.onclick = function(){ ck.memberId=null; ck.memberNama=''; ck.memberPoin=0; ck.poinDitukar=0; openCartSheet(); };
+  var memberPickBtn = document.getElementById('ckMemberPick');
+  if(memberPickBtn) memberPickBtn.onclick = openMemberPicker;
+
+  var voucherRemoveBtn = document.getElementById('ckVoucherRemove');
+  if(voucherRemoveBtn) voucherRemoveBtn.onclick = function(){ ck.voucherCode=''; ck.voucherDiskon=0; openCartSheet(); };
+  var voucherApplyBtn = document.getElementById('ckVoucherApply');
+  if(voucherApplyBtn) voucherApplyBtn.onclick = function(){
+    var kode = document.getElementById('ckVoucherInput').value.trim();
+    if(!kode){ toast('Masukkan kode voucher','error'); return; }
+    apiCall('validateVoucher', { kode: kode, subtotal: subtotal }).then(function(res){
+      if(res.error){ toast(res.error,'error'); return; }
+      ck.voucherCode = kode.toUpperCase(); ck.voucherDiskon = res.diskon;
+      toast('Voucher berhasil dipakai','check_circle');
+      openCartSheet();
+    });
+  };
+
   document.querySelectorAll('[data-inc]').forEach(function(b){ b.onclick=function(){ changeQty(b.getAttribute('data-inc'),1); openCartSheet(); }; });
   document.querySelectorAll('[data-dec]').forEach(function(b){ b.onclick=function(){ changeQty(b.getAttribute('data-dec'),-1); if(state.cart.length) openCartSheet(); else closeSheet(); }; });
   document.getElementById('ckNext').onclick = openPaymentSheet;
 }
 
+function openMemberPicker(){
+  var html = '<div class="field"><input id="mpSearch" placeholder="Cari nama / no. HP…" autofocus></div>'+
+    '<div id="mpResults"></div>'+
+    '<button class="btn btn-outline btn-block" id="mpNewMember" style="margin-top:10px;"><span class="msr">person_add</span> Member Baru</button>';
+  openSheet('Pilih Member', html);
+  function draw(q){
+    apiCall('getMembers', q?{query:q}:{}).then(function(res){
+      var list = res.data || [];
+      document.getElementById('mpResults').innerHTML = list.length ? list.map(function(m){
+        return '<div class="listrow" data-pick="'+m.ID+'" data-nama="'+m.Nama+'" data-poin="'+m.Poin+'" style="cursor:pointer;"><span>'+m.Nama+' ('+(m.NoHP||'-')+')</span><span class="tabular" style="font-weight:700;">'+m.Poin+' poin</span></div>';
+      }).join('') : '<div style="font-size:12.5px;color:var(--ink-500);padding:8px 0;">Tidak ditemukan</div>';
+      document.querySelectorAll('[data-pick]').forEach(function(row){
+        row.onclick = function(){
+          state.checkout.memberId = row.getAttribute('data-pick');
+          state.checkout.memberNama = row.getAttribute('data-nama');
+          state.checkout.memberPoin = Number(row.getAttribute('data-poin'));
+          state.checkout.poinDitukar = 0;
+          closeSheet();
+          openCartSheet();
+        };
+      });
+    });
+  }
+  draw('');
+  document.getElementById('mpSearch').oninput = function(e){ draw(e.target.value); };
+  document.getElementById('mpNewMember').onclick = function(){ closeSheet(); openMemberForm(null); };
+}
+
 function openPaymentSheet(){
   var sub = state.cart.reduce(function(s,c){ return s+c.qty*c.harga; }, 0);
-  var diskon = state.checkout.diskon, pajakP = state.checkout.pajakPersen;
-  var pajak = Math.round((sub-diskon) * pajakP/100);
-  var total = sub - diskon + pajak;
+  var ck = state.checkout;
+  var diskonPoin = ck.poinDitukar * state.loyaltySettings.nilaiPerPoin;
+  var totalDiskon = ck.diskon + ck.voucherDiskon + diskonPoin;
+  if(totalDiskon > sub) totalDiskon = sub;
+  var pajak = Math.round((sub-totalDiskon) * ck.pajakPersen/100);
+  var total = sub - totalDiskon + pajak;
 
   var methods = [['Tunai','payments'],['QRIS','qr_code_2'],['Transfer','account_balance'],['Debit','credit_card'],['Kredit','credit_score'],['E-Wallet','wallet']];
   var pmHtml = methods.map(function(m){ return '<div class="pmethod '+(state.checkout.metode===m[0]?'active':'')+'" data-m="'+m[0]+'"><span class="msr">'+m[1]+'</span>'+m[0]+'</div>'; }).join('');
@@ -1187,44 +1291,48 @@ function openPaymentSheet(){
   document.getElementById('ckBayarBtn').onclick = function(){
     var bayar = Number(bayarInput.value)||0;
     if(state.checkout.metode==='Tunai' && bayar < total){ toast('Uang dibayar kurang dari total','error'); return; }
-    finalizeTransaction(sub, diskon, pajak, total, bayar || total);
+    finalizeTransaction(sub, totalDiskon, pajak, total, bayar || total);
   };
 }
 
 function finalizeTransaction(sub, diskon, pajak, total, bayar){
+  var ck = state.checkout;
   var payload = {
     items: JSON.stringify(state.cart.map(function(c){ return {id:c.id, nama:c.nama, qty:c.qty, harga:c.harga}; })),
     subtotal: sub, diskon: diskon, pajak: pajak, total: total,
-    uangDibayar: bayar, metode: state.checkout.metode, kasir: state.kasirNama
+    uangDibayar: bayar, metode: ck.metode, kasir: state.kasirNama,
+    memberId: ck.memberId || '', poinDitukar: ck.poinDitukar || 0, kodeVoucher: ck.voucherCode || ''
   };
   var cartSnapshot = state.cart.slice();
   var kembalian = bayar-total;
 
-  function afterSuccess(invoice){
+  function afterSuccess(invoice, poinDiperoleh){
     state.cart.forEach(function(c){
       var p = state.produk.find(function(x){return String(x.ID)===String(c.id);});
       if(p) p.Stok = Number(p.Stok) - c.qty;
     });
     state.cart = [];
-    state.checkout = { diskon:0, pajakPersen: state.defaultPajak, metode:'Tunai', uangDibayar:0 };
+    var memberInfo = ck.memberId ? { nama: ck.memberNama, poinDiperoleh: poinDiperoleh||0, poinSekarang: (ck.memberPoin - ck.poinDitukar + (poinDiperoleh||0)) } : null;
+    var metodeUsed = ck.metode;
+    state.checkout = { diskon:0, pajakPersen: state.defaultPajak, metode:'Tunai', uangDibayar:0, memberId:null, memberNama:'', memberPoin:0, poinDitukar:0, voucherCode:'', voucherDiskon:0 };
     closeSheet(); updateCartUI(); renderTransaksi();
-    showReceipt(invoice, cartSnapshot, sub, diskon, pajak, total, bayar, kembalian);
+    showReceipt(invoice, cartSnapshot, sub, diskon, pajak, total, bayar, kembalian, memberInfo, metodeUsed);
   }
 
   if(!navigator.onLine){
     state.offlineQueue.push(payload); LS.set('offline_queue', state.offlineQueue);
     toast('Offline — transaksi disimpan & akan dikirim otomatis','cloud_off');
-    afterSuccess('OFFLINE-'+Date.now());
+    afterSuccess('OFFLINE-'+Date.now(), 0);
     return;
   }
   apiCall('createTransaction', payload, 'POST').then(function(res){
     if(res.error){ toast('Gagal: '+res.error, 'error'); return; }
     toast('Transaksi berhasil ✔','check_circle');
-    afterSuccess(res.invoice);
+    afterSuccess(res.invoice, res.poinDiperoleh);
   }).catch(function(){
     state.offlineQueue.push(payload); LS.set('offline_queue', state.offlineQueue);
     toast('Gagal kirim — disimpan ke antrean offline','cloud_off');
-    afterSuccess('OFFLINE-'+Date.now());
+    afterSuccess('OFFLINE-'+Date.now(), 0);
   });
 }
 
@@ -1281,7 +1389,7 @@ function printBluetooth(invoice, items, sub, diskon, pajak, total, bayar, kembal
   });
 }
 
-function showReceipt(invoice, items, sub, diskon, pajak, total, bayar, kembalian){
+function showReceipt(invoice, items, sub, diskon, pajak, total, bayar, kembalian, memberInfo, metode){
   var lines = items.map(function(c){ return '<div class="sumrow"><span>'+c.nama+' x'+c.qty+'</span><span class="tabular">'+rupiah(c.qty*c.harga)+'</span></div>'; }).join('');
   var sp = state.storeProfile;
   var storeHeader = '<div style="text-align:center;margin-bottom:8px;padding-bottom:8px;border-bottom:1px dashed var(--line);">'+
@@ -1290,17 +1398,19 @@ function showReceipt(invoice, items, sub, diskon, pajak, total, bayar, kembalian
     (sp.alamat?'<div style="font-size:11px;color:var(--ink-500);">'+sp.alamat+'</div>':'')+
     (sp.telp?'<div style="font-size:11px;color:var(--ink-500);">'+sp.telp+'</div>':'')+
   '</div>';
+  var memberHtml = memberInfo ? '<div class="sumrow" style="background:var(--blue-100);border-radius:8px;padding:8px 10px;margin:8px 0;"><span style="display:flex;align-items:center;gap:6px;color:var(--blue-700);font-weight:700;"><span class="msr" style="font-size:16px;">loyalty</span>'+memberInfo.nama+'</span><span class="tabular" style="color:var(--blue-700);font-weight:700;">+'+memberInfo.poinDiperoleh+' poin (total '+memberInfo.poinSekarang+')</span></div>' : '';
   var html =
     storeHeader +
     '<div style="text-align:center;margin-bottom:10px;"><span class="msr" style="font-size:44px;color:var(--green);">check_circle</span>'+
     '<div style="font-weight:800;font-size:16px;margin-top:4px;">Pembayaran Berhasil</div>'+
     '<div style="font-size:12px;color:var(--ink-500);">'+invoice+'</div></div>'+
+    memberHtml +
     lines +
     '<div class="sumrow"><span>Subtotal</span><span class="tabular">'+rupiah(sub)+'</span></div>'+
     '<div class="sumrow"><span>Diskon</span><span class="tabular">- '+rupiah(diskon)+'</span></div>'+
     '<div class="sumrow"><span>Pajak</span><span class="tabular">'+rupiah(pajak)+'</span></div>'+
     '<div class="sumrow total"><span>Total</span><span class="tabular">'+rupiah(total)+'</span></div>'+
-    '<div class="sumrow"><span>Dibayar ('+state.checkout.metode+')</span><span class="tabular">'+rupiah(bayar)+'</span></div>'+
+    '<div class="sumrow"><span>Dibayar ('+metode+')</span><span class="tabular">'+rupiah(bayar)+'</span></div>'+
     '<div class="sumrow"><span>Kembalian</span><span class="tabular">'+rupiah(Math.max(kembalian,0))+'</span></div>'+
     (state.receiptSettings.footer ? '<div style="text-align:center;font-size:11.5px;color:var(--ink-500);margin-top:10px;padding-top:10px;border-top:1px dashed var(--line);">'+state.receiptSettings.footer+'</div>' : '')+
     '<div class="stack" style="max-width:none;margin-top:12px;">'+
@@ -1590,10 +1700,105 @@ function openKategoriForm(c){
   };
 }
 
+/* =====================================================================
+   MEMBER & POIN LOYALTI
+===================================================================== */
+function renderMemberList(){
+  document.getElementById('page').innerHTML =
+    '<div style="padding:12px 14px 0;"><div class="field" style="margin-bottom:0;"><input id="memberSearch" placeholder="Cari nama / no. HP…"></div></div>'+
+    '<div id="memberListWrap" style="padding-top:10px;"><div class="empty"><span class="msr">hourglass_top</span><div>Memuat member…</div></div></div>';
+
+  function draw(query){
+    apiCall('getMembers', query?{query:query}:{}).then(function(res){
+      var list = res.data || [];
+      document.getElementById('memberListWrap').innerHTML = list.length ? list.map(function(m){
+        return '<div class="listcard" data-id="'+m.ID+'">'+
+          '<div class="thumb"><span class="msr">person</span></div>'+
+          '<div class="info"><div class="t1">'+m.Nama+'</div><div class="t2">'+(m.NoHP||'-')+' • '+m.Poin+' poin • Total belanja '+rupiah(m.TotalBelanja)+'</div></div>'+
+          '<div class="actions"><button class="iconbtn" data-edit="'+m.ID+'"><span class="msr" style="font-size:19px;">edit</span></button><button class="iconbtn" data-del="'+m.ID+'"><span class="msr" style="font-size:19px;color:var(--red-600);">delete</span></button></div>'+
+        '</div>';
+      }).join('') : '<div class="empty"><span class="msr">loyalty</span><div>Belum ada member</div></div>';
+      document.querySelectorAll('[data-edit]').forEach(function(b){ b.onclick=function(){ openMemberForm(list.find(function(m){return String(m.ID)===b.getAttribute('data-edit');})); }; });
+      document.querySelectorAll('[data-del]').forEach(function(b){ b.onclick=function(){ if(confirm('Hapus member ini?')) apiCall('deleteMember',{id:b.getAttribute('data-del')},'POST').then(function(){ toast('Member dihapus','check_circle'); renderMemberList(); }); }; });
+    });
+  }
+  draw('');
+  document.getElementById('memberSearch').oninput = function(e){ draw(e.target.value); };
+}
+
+function openMemberForm(m){
+  var html =
+    '<div class="field"><label>Nama</label><input id="mfNama" value="'+(m?m.Nama:'')+'"></div>'+
+    '<div class="field"><label>No. HP</label><input id="mfHp" value="'+(m?m.NoHP:'')+'"></div>'+
+    '<div class="field"><label>Alamat</label><input id="mfAlamat" value="'+(m?m.Alamat:'')+'"></div>'+
+    (m?'<div class="sumrow"><span>Poin saat ini</span><span class="tabular" style="font-weight:800;">'+m.Poin+' poin</span></div>':'')+
+    '<button class="btn btn-primary btn-block" id="mfSave" style="margin-top:8px;">'+(m?'Simpan':'Tambah Member')+'</button>';
+  openSheet(m?'Edit Member':'Tambah Member', html);
+  document.getElementById('mfSave').onclick = function(){
+    var payload = { id:m?m.ID:undefined, nama:document.getElementById('mfNama').value.trim(), noHp:document.getElementById('mfHp').value.trim(), alamat:document.getElementById('mfAlamat').value.trim() };
+    if(!payload.nama){ toast('Nama member wajib diisi','error'); return; }
+    apiCall(m?'updateMember':'addMember', payload, 'POST').then(function(res){
+      if(res.error){ toast(res.error,'error'); return; }
+      toast('Member tersimpan','check_circle'); closeSheet(); renderMemberList();
+    });
+  };
+}
+
+/* =====================================================================
+   VOUCHER & PROMO
+===================================================================== */
+function renderVoucherList(){
+  document.getElementById('page').innerHTML = '<div style="padding-top:10px;" id="voucherListWrap"><div class="empty"><span class="msr">hourglass_top</span><div>Memuat voucher…</div></div></div>';
+  apiCall('getVouchers').then(function(res){
+    var list = res.data || [];
+    document.getElementById('voucherListWrap').innerHTML = list.length ? list.map(function(v){
+      var nilaiTxt = v.Tipe==='Persen' ? v.Nilai+'%' : rupiah(v.Nilai);
+      return '<div class="listcard" data-id="'+v.ID+'">'+
+        '<div class="dotcat" style="background:'+(v.Aktif==='Ya'?'var(--green)':'var(--ink-300)')+';"><span class="msr">confirmation_number</span></div>'+
+        '<div class="info"><div class="t1">'+v.Kode+' <span style="font-weight:400;color:var(--ink-500);font-size:11.5px;">('+(v.Aktif==='Ya'?'Aktif':'Nonaktif')+')</span></div><div class="t2">Diskon '+nilaiTxt+' • Min. belanja '+rupiah(v.MinBelanja)+' • Terpakai '+v.Terpakai+(Number(v.Kuota)>0?'/'+v.Kuota:'')+'</div></div>'+
+        '<div class="actions"><button class="iconbtn" data-edit="'+v.ID+'"><span class="msr" style="font-size:19px;">edit</span></button><button class="iconbtn" data-del="'+v.ID+'"><span class="msr" style="font-size:19px;color:var(--red-600);">delete</span></button></div>'+
+      '</div>';
+    }).join('') : '<div class="empty"><span class="msr">confirmation_number</span><div>Belum ada voucher</div></div>';
+    document.querySelectorAll('[data-edit]').forEach(function(b){ b.onclick=function(){ openVoucherForm(list.find(function(v){return String(v.ID)===b.getAttribute('data-edit');})); }; });
+    document.querySelectorAll('[data-del]').forEach(function(b){ b.onclick=function(){ if(confirm('Hapus voucher ini?')) apiCall('deleteVoucher',{id:b.getAttribute('data-del')},'POST').then(function(){ toast('Voucher dihapus','check_circle'); renderVoucherList(); }); }; });
+  });
+}
+
+function openVoucherForm(v){
+  var html =
+    '<div class="field"><label>Kode Voucher</label><input id="vfKode" value="'+(v?v.Kode:'')+'" style="text-transform:uppercase;"></div>'+
+    '<div class="row2">'+
+      '<div class="field"><label>Tipe Diskon</label><select id="vfTipe"><option value="Nominal" '+(v&&v.Tipe==='Nominal'?'selected':'')+'>Nominal (Rp)</option><option value="Persen" '+(v&&v.Tipe==='Persen'?'selected':'')+'>Persen (%)</option></select></div>'+
+      '<div class="field"><label>Nilai</label><input id="vfNilai" type="number" value="'+(v?v.Nilai:'')+'"></div>'+
+    '</div>'+
+    '<div class="row2">'+
+      '<div class="field"><label>Minimal Belanja (Rp)</label><input id="vfMin" type="number" value="'+(v?v.MinBelanja:0)+'"></div>'+
+      '<div class="field"><label>Kuota (0=tanpa batas)</label><input id="vfKuota" type="number" value="'+(v?v.Kuota:0)+'"></div>'+
+    '</div>'+
+    '<div class="row2">'+
+      '<div class="field"><label>Kadaluarsa (opsional)</label><input id="vfExp" type="date" value="'+(v?v.Kadaluarsa:'')+'"></div>'+
+      '<div class="field"><label>Status</label><select id="vfAktif"><option value="Ya" '+(!v||v.Aktif==='Ya'?'selected':'')+'>Aktif</option><option value="Tidak" '+(v&&v.Aktif==='Tidak'?'selected':'')+'>Nonaktif</option></select></div>'+
+    '</div>'+
+    '<button class="btn btn-primary btn-block" id="vfSave">'+(v?'Simpan':'Tambah Voucher')+'</button>';
+  openSheet(v?'Edit Voucher':'Tambah Voucher', html);
+  document.getElementById('vfSave').onclick = function(){
+    var payload = { id:v?v.ID:undefined, kode:document.getElementById('vfKode').value.trim(), tipe:document.getElementById('vfTipe').value,
+      nilai:document.getElementById('vfNilai').value, minBelanja:document.getElementById('vfMin').value, kuota:document.getElementById('vfKuota').value,
+      kadaluarsa:document.getElementById('vfExp').value, aktif:document.getElementById('vfAktif').value };
+    if(!payload.kode || !payload.nilai){ toast('Kode & Nilai wajib diisi','error'); return; }
+    apiCall(v?'updateVoucher':'addVoucher', payload, 'POST').then(function(res){
+      if(res.error){ toast(res.error,'error'); return; }
+      toast('Voucher tersimpan','check_circle'); closeSheet(); renderVoucherList();
+    });
+  };
+}
+
 /* fab */
 document.getElementById('fab').onclick = function(){
   if(state.page==='produk') openProdukForm(null);
   else if(state.page==='kategori') openKategoriForm(null);
+  else if(state.page==='member') openMemberForm(null);
+  else if(state.page==='voucher') openVoucherForm(null);
 };
 
 /* =====================================================================
