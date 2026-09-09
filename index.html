@@ -667,6 +667,22 @@ function renderPengaturan(){
     '<button class="btn btn-primary btn-sm" id="loySave">Simpan Pengaturan Loyalti</button>'+
   '</div>';
 
+  html += '<div class="section-title">Laporan Otomatis 24 Jam</div>';
+  html += '<div class="card">'+
+    '<div style="font-size:11.5px;color:var(--ink-500);margin-bottom:10px;">Setiap hari pada jam yang dipilih, ringkasan penjualan 24 jam terakhir otomatis dicatat ke sheet "Laporan" di Spreadsheet Anda — berjalan sendiri walau aplikasi tidak dibuka.</div>'+
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">'+
+      '<span style="font-size:13px;font-weight:600;">Aktifkan Laporan Otomatis</span>'+
+      '<button class="switch" id="reportScheduleToggle"></button>'+
+    '</div>'+
+    '<div class="field" id="reportScheduleHourWrap"><label>Jam Pembuatan Laporan (setiap hari)</label>'+
+      '<select id="reportScheduleHour">'+ Array.from({length:24}, function(_,h){ return '<option value="'+h+'">'+String(h).padStart(2,'0')+':00</option>'; }).join('') +'</select>'+
+    '</div>'+
+    '<div style="display:flex;gap:8px;">'+
+      '<button class="btn btn-primary btn-sm" id="reportScheduleSave">Simpan Jadwal</button>'+
+      '<button class="btn btn-outline btn-sm" id="reportRunNow">Buat Laporan Sekarang</button>'+
+    '</div>'+
+  '</div>';
+
   html += '<div class="section-title">Status Koneksi</div>';
   html += '<div class="card">'+
     '<div style="display:flex;align-items:center;gap:10px;">'+
@@ -780,6 +796,46 @@ function renderPengaturan(){
       apiCall('setSetting', { key:'poinPerRp', value:state.loyaltySettings.poinPerRp }, 'POST'),
       apiCall('setSetting', { key:'nilaiPerPoin', value:state.loyaltySettings.nilaiPerPoin }, 'POST')
     ]).then(function(){ toast('Pengaturan loyalti disimpan','check_circle'); }).catch(function(){ toast('Tersimpan lokal, gagal sinkron ke server','error'); });
+  };
+
+  var reportToggle = document.getElementById('reportScheduleToggle');
+  var reportHourWrap = document.getElementById('reportScheduleHourWrap');
+  if(activeSpreadsheet()){
+    apiCall('getReportSchedule').then(function(res){
+      var d = res.data || {};
+      var aktif = d.aktif === 'Ya';
+      reportToggle.classList.toggle('on', aktif);
+      reportHourWrap.style.opacity = aktif ? '1' : '.5';
+      document.getElementById('reportScheduleHour').value = d.jam !== undefined ? d.jam : 23;
+    }).catch(function(){});
+  }
+  reportToggle.onclick = function(){
+    var willBeOn = !reportToggle.classList.contains('on');
+    if(!willBeOn){
+      apiCall('disableReportSchedule', {}, 'POST').then(function(){
+        reportToggle.classList.remove('on');
+        reportHourWrap.style.opacity = '.5';
+        toast('Laporan otomatis dimatikan','check_circle');
+      });
+    } else {
+      reportToggle.classList.add('on');
+      reportHourWrap.style.opacity = '1';
+    }
+  };
+  document.getElementById('reportScheduleSave').onclick = function(){
+    if(!reportToggle.classList.contains('on')){ toast('Aktifkan dulu toggle-nya','error'); return; }
+    var hour = Number(document.getElementById('reportScheduleHour').value);
+    apiCall('setReportSchedule', { hour: hour }, 'POST').then(function(res){
+      if(res.error){ toast(res.error,'error'); return; }
+      toast('Laporan otomatis dijadwalkan setiap jam '+String(hour).padStart(2,'0')+':00','check_circle');
+    }).catch(function(){ toast('Gagal menyimpan jadwal','error'); });
+  };
+  document.getElementById('reportRunNow').onclick = function(){
+    toast('Membuat laporan…','sync');
+    apiCall('runDailyReportNow', {}, 'POST').then(function(res){
+      if(res.error){ toast(res.error,'error'); return; }
+      toast('Laporan untuk '+res.tanggal+' berhasil dibuat','check_circle');
+    }).catch(function(){ toast('Gagal membuat laporan','error'); });
   };
 
   document.getElementById('muToggle').onclick = function(){
@@ -1081,6 +1137,19 @@ var searchbar = document.getElementById('searchbar'), searchInput = document.get
 document.getElementById('btnSearch').onclick = function(){ searchbar.classList.add('active'); searchInput.focus(); };
 document.getElementById('btnCloseSearch').onclick = function(){ searchbar.classList.remove('active'); state.searchQuery=''; renderTransaksi(); };
 searchInput.oninput = function(e){ state.searchQuery = e.target.value; renderTransaksi(); };
+searchInput.onkeydown = function(e){
+  // Scanner barcode USB/Bluetooth fisik biasanya mengirim tombol Enter
+  // setelah selesai membaca kode — langsung masukkan ke keranjang kalau cocok.
+  if(e.key !== 'Enter') return;
+  var val = e.target.value.trim();
+  if(!val) return;
+  var exactMatch = state.produk.filter(function(p){ return String(p.Barcode) === String(val) && p.Status !== 'Nonaktif'; });
+  if(exactMatch.length === 1){
+    addToCart(exactMatch[0].ID);
+    toast('✔ '+exactMatch[0].Nama+' ditambahkan ke keranjang', 'check_circle');
+    e.target.value = ''; state.searchQuery = ''; renderTransaksi();
+  }
+};
 
 document.getElementById('btnCameraScan').onclick = openBarcodeScanner;
 function openBarcodeScanner(){
@@ -1118,11 +1187,18 @@ function openBarcodeScanner(){
         if(codes.length){
           var val = codes[0].rawValue;
           closeScanner();
-          state.searchQuery = val;
-          searchInput.value = val;
-          searchbar.classList.add('active');
-          renderTransaksi();
-          toast('Barcode terdeteksi: '+val, 'check_circle');
+          var exactMatch = state.produk.filter(function(p){ return String(p.Barcode) === String(val) && p.Status !== 'Nonaktif'; });
+          if(exactMatch.length === 1){
+            addToCart(exactMatch[0].ID);
+            toast('✔ '+exactMatch[0].Nama+' ditambahkan ke keranjang', 'check_circle');
+          } else {
+            state.searchQuery = val;
+            searchInput.value = val;
+            searchbar.classList.add('active');
+            renderTransaksi();
+            if(exactMatch.length === 0) toast('Barcode "'+val+'" tidak ditemukan di produk manapun', 'error');
+            else toast('Ditemukan beberapa produk dengan barcode ini', 'info');
+          }
         } else {
           rafId = requestAnimationFrame(loop);
         }
@@ -1556,10 +1632,31 @@ function openTrxDetail(invoice){
 var reportChart;
 function renderLaporan(){
   document.getElementById('page').innerHTML =
-    '<div class="subtabs"><button class="subtab active" data-p="harian">Harian</button><button class="subtab" data-p="mingguan">Mingguan</button><button class="subtab" data-p="bulanan">Bulanan</button><button class="subtab" data-p="tahunan">Tahunan</button></div>'+
+    '<div class="subtabs"><button class="subtab active" data-p="harian">Harian</button><button class="subtab" data-p="mingguan">Mingguan</button><button class="subtab" data-p="bulanan">Bulanan</button><button class="subtab" data-p="tahunan">Tahunan</button><button class="subtab" data-p="arsip">Arsip Otomatis</button></div>'+
     '<div id="reportBody"><div class="empty"><span class="msr">hourglass_top</span><div>Memuat laporan…</div></div></div>';
 
+  function loadArchive(){
+    apiCall('getReportArchive').then(function(res){
+      var list = res.data || [];
+      var html = '<div class="section-title">Arsip Laporan Harian Otomatis</div>'+
+        '<div style="font-size:11.5px;color:var(--ink-500);padding:0 14px 10px;">Dibuat otomatis tiap hari sesuai jadwal di Pengaturan → Laporan Otomatis. Bisa juga dipicu manual lewat tombol "Buat Laporan Sekarang" di sana.</div>';
+      if(!list.length){
+        html += '<div class="empty"><span class="msr">event_note</span><div>Belum ada arsip laporan. Aktifkan jadwal di Pengaturan.</div></div>';
+      } else {
+        html += list.map(function(r){
+          return '<div class="listcard" style="display:flex;">'+
+            '<div class="thumb"><span class="msr">calendar_month</span></div>'+
+            '<div class="info"><div class="t1">'+r.Tanggal+'</div><div class="t2">'+r.TotalTransaksi+' transaksi • Laba kotor '+rupiah(r.LabaKotor)+'</div></div>'+
+            '<div style="text-align:right;"><div style="font-weight:800;" class="tabular">'+rupiah(r.TotalPenjualan)+'</div></div>'+
+          '</div>';
+        }).join('');
+      }
+      document.getElementById('reportBody').innerHTML = html;
+    }).catch(function(err){ document.getElementById('reportBody').innerHTML = '<div class="empty"><span class="msr">error</span><div>'+err.message+'</div></div>'; });
+  }
+
   function load(period){
+    if(period==='arsip'){ loadArchive(); return; }
     var now = new Date(), from;
     if(period==='harian'){ from = fmtDate(now); }
     else if(period==='mingguan'){ var d=new Date(now); d.setDate(d.getDate()-7); from=fmtDate(d); }
