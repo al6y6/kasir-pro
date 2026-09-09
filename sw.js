@@ -3,7 +3,7 @@
 // Google Spreadsheet lewat fetch() di index.html. Ini hanya meng-cache file
 // aplikasi (HTML/CSS/JS) agar bisa dibuka walau koneksi lemah.
 
-var CACHE_NAME = 'kasirpro-shell-v9';
+var CACHE_NAME = 'kasirpro-shell-v10';
 var SHELL_FILES = ['./index.html', './manifest.json'];
 
 self.addEventListener('install', function (event) {
