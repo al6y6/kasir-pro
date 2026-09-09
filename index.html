@@ -1337,6 +1337,21 @@ function finalizeTransaction(sub, diskon, pajak, total, bayar){
 }
 
 function printBluetooth(invoice, items, sub, diskon, pajak, total, bayar, kembalian){
+  var sp = state.storeProfile;
+  // Di dalam aplikasi Android, pakai jembatan native (jauh lebih kompatibel
+  // karena memakai Bluetooth Classic/SPP, bukan Web Bluetooth/BLE).
+  if(window.AndroidBridge && window.AndroidBridge.printBluetooth){
+    var payload = {
+      storeName: sp.nama||'Toko Saya', storeAddress: sp.alamat||'', storePhone: sp.telp||'',
+      invoice: invoice,
+      items: items.map(function(c){ return { nama:c.nama, qty:c.qty, subtotal: c.qty*c.harga }; }),
+      subtotal: sub, diskon: diskon, pajak: pajak, total: total, bayar: bayar,
+      kembalian: Math.max(kembalian,0), footer: state.receiptSettings.footer||''
+    };
+    window.AndroidBridge.printBluetooth(JSON.stringify(payload));
+    return;
+  }
+
   if(!navigator.bluetooth){
     toast('Bluetooth Printing hanya didukung Chrome/Edge di Android. Browser ini tidak mendukungnya.', 'error');
     return;
@@ -1354,7 +1369,6 @@ function printBluetooth(invoice, items, sub, diskon, pajak, total, bayar, kembal
   }).then(function(service){
     return service.getCharacteristic(CHAR);
   }).then(function(characteristic){
-    var sp = state.storeProfile;
     var out = [];
     out.push('\x1B\x40'); // reset
     out.push('\x1B\x61\x01'); // center align
@@ -1416,13 +1430,13 @@ function showReceipt(invoice, items, sub, diskon, pajak, total, bayar, kembalian
     '<div class="stack" style="max-width:none;margin-top:12px;">'+
       '<button class="btn btn-outline btn-block" id="btnPrint"><span class="msr">print</span> Cetak / Simpan PDF</button>'+
       '<button class="btn btn-outline btn-block" id="btnBtPrint"><span class="msr">bluetooth</span> Cetak Bluetooth (Thermal)</button>'+
-      '<div style="font-size:10.5px;color:var(--ink-500);text-align:center;">Kompatibilitas tergantung merek printer • hanya Chrome/Edge Android</div>'+
+      '<div style="font-size:10.5px;color:var(--ink-500);text-align:center;">Di aplikasi Android: pilih printer yang sudah di-pairing. Di browser biasa: kompatibilitas tergantung merek printer & hanya Chrome/Edge Android.</div>'+
       '<button class="btn btn-outline btn-block" id="btnWa"><span class="msr">share</span> Bagikan via WhatsApp</button>'+
       '<button class="btn btn-primary btn-block" id="btnCloseReceipt">Selesai</button>'+
     '</div>';
   openSheet('Struk Transaksi', html);
   document.getElementById('btnCloseReceipt').onclick = closeSheet;
-  document.getElementById('btnPrint').onclick = function(){ window.print(); };
+  document.getElementById('btnPrint').onclick = function(){ doPrint(); };
   document.getElementById('btnBtPrint').onclick = function(){ printBluetooth(invoice, items, sub, diskon, pajak, total, bayar, kembalian); };
   document.getElementById('btnWa').onclick = function(){
     var text = 'Struk '+invoice+'\\n' + items.map(function(c){return c.nama+' x'+c.qty+' = '+rupiah(c.qty*c.harga);}).join('\\n') + '\\nTotal: '+rupiah(total);
@@ -1530,7 +1544,7 @@ function openTrxDetail(invoice){
       '</div>';
     document.getElementById('sheetBody').innerHTML = html;
     document.getElementById('sheetTitle').textContent = invoice;
-    document.getElementById('btnPrintUlang').onclick = function(){ window.print(); };
+    document.getElementById('btnPrintUlang').onclick = function(){ doPrint(); };
     document.getElementById('btnVoid').onclick = function(){ apiCall('voidTransaction',{invoice:invoice},'POST').then(function(){ toast('Transaksi di-void','check_circle'); closeSheet(); renderRiwayat(); }); };
     document.getElementById('btnRefund').onclick = function(){ apiCall('refundTransaction',{invoice:invoice},'POST').then(function(){ toast('Refund diproses','check_circle'); closeSheet(); renderRiwayat(); }); };
   });
@@ -1575,7 +1589,7 @@ function renderLaporan(){
       reportChart = new Chart(ctx, { type:'bar', data:{ labels:r.jamRamai.slice(0,8).map(function(j){return j.jam;}), datasets:[{ data:r.jamRamai.slice(0,8).map(function(j){return j.jumlah;}), backgroundColor:'#C4291B', borderRadius:6 }] }, options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}} } });
 
       document.getElementById('btnExpCsv').onclick = function(){ exportTransaksiCsv(r.transaksi); };
-      document.getElementById('btnExpPdf').onclick = function(){ window.print(); };
+      document.getElementById('btnExpPdf').onclick = function(){ doPrint(); };
     }).catch(function(err){ document.getElementById('reportBody').innerHTML = '<div class="empty"><span class="msr">error</span><div>'+err.message+'</div></div>'; });
   }
   load('harian');
@@ -1592,7 +1606,19 @@ function exportProdukCsv(){
   var csv = [headers.join(',')].concat(state.produk.map(function(r){ return headers.map(function(h){ return r[h]; }).join(','); })).join('\\n');
   downloadFile('produk.csv', csv, 'text/csv');
 }
+function doPrint(){
+  // Saat dibungkus jadi aplikasi Android (WebView), window.print() bawaan
+  // browser tidak berfungsi — AndroidBridge.printPage() akan memicu dialog
+  // cetak/simpan-PDF native Android. Di browser biasa, tetap pakai window.print().
+  if(window.AndroidBridge && window.AndroidBridge.printPage){ window.AndroidBridge.printPage(); }
+  else { window.print(); }
+}
 function downloadFile(name, content, type){
+  if(window.AndroidBridge && window.AndroidBridge.saveFile){
+    window.AndroidBridge.saveFile(name, content, type);
+    toast('File disimpan ke folder Download','check_circle');
+    return;
+  }
   var blob = new Blob([content], {type:type});
   var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click();
 }
