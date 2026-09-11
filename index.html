@@ -298,6 +298,7 @@ button{font-family:inherit; cursor:pointer;}
     <button class="nav-item" data-page="kategori"><span class="msr">category</span> Kategori</button>
     <button class="nav-item" data-page="member"><span class="msr">loyalty</span> Member & Poin</button>
     <button class="nav-item" data-page="voucher"><span class="msr">confirmation_number</span> Voucher & Promo</button>
+    <button class="nav-item" data-page="pembelian"><span class="msr">local_shipping</span> Pembelian</button>
     <div class="nav-sep">Sistem</div>
     <button class="nav-item" data-page="pengaturan"><span class="msr">settings</span> Pengaturan Spreadsheet</button>
   </nav>
@@ -483,7 +484,7 @@ applyTheme();
 function setPage(p){
   state.page = p;
   document.querySelectorAll('.nav-item').forEach(function(b){ b.classList.toggle('active', b.getAttribute('data-page')===p); });
-  document.getElementById('fab').classList.toggle('hide', !(p==='produk'||p==='kategori'||p==='member'||p==='voucher'));
+  document.getElementById('fab').classList.toggle('hide', !(p==='produk'||p==='kategori'||p==='member'||p==='voucher'||p==='pembelian'));
   document.getElementById('bottomCart').classList.toggle('hidden', !(p==='transaksi' && state.cart.length));
   var titles = {
     transaksi:['Transaksi Baru','Pilih produk untuk mulai'],
@@ -494,6 +495,7 @@ function setPage(p){
     kategori:['Kategori','Kelola kategori produk'],
     member:['Member & Poin','Kelola pelanggan & loyalti'],
     voucher:['Voucher & Promo','Kelola kode diskon'],
+    pembelian:['Pembelian','Catat pembelian bahan baku & stok'],
     pengaturan:['Pengaturan','Google Spreadsheet & sinkronisasi']
   };
   document.getElementById('appbarTitle').innerHTML = titles[p][0] + '<small id="appbarSub">'+titles[p][1]+'</small>';
@@ -521,6 +523,7 @@ function render(){
   else if(state.page==='kategori') renderKategoriList();
   else if(state.page==='member') renderMemberList();
   else if(state.page==='voucher') renderVoucherList();
+  else if(state.page==='pembelian') renderPembelianList();
   else if(state.page==='pengaturan') renderPengaturan();
 }
 
@@ -585,7 +588,7 @@ function updateDrawerUser(){
     wrap.style.display='none';
   }
   var isAdmin = !state.multiUserEnabled || (state.currentUser && state.currentUser.Role === 'Admin');
-  document.querySelectorAll('.nav-item[data-page="produk"], .nav-item[data-page="kategori"], .nav-item[data-page="pengaturan"]').forEach(function(b){
+  document.querySelectorAll('.nav-item[data-page="produk"], .nav-item[data-page="kategori"], .nav-item[data-page="pengaturan"], .nav-item[data-page="pembelian"]').forEach(function(b){
     b.style.display = isAdmin ? 'flex' : 'none';
   });
 }
@@ -1918,12 +1921,129 @@ function openVoucherForm(v){
   };
 }
 
+/* =====================================================================
+   PEMBELIAN (bahan baku / stok masuk)
+===================================================================== */
+function renderPembelianList(){
+  document.getElementById('page').innerHTML =
+    '<div style="padding:12px 14px 0;"><div class="field" style="margin-bottom:0;"><input id="pbSearch" placeholder="Cari nama item / no. invoice / kategori…"></div></div>'+
+    '<div id="pbSummary" style="padding:0 14px;"></div>'+
+    '<div id="pbListWrap" style="padding-top:10px;"><div class="empty"><span class="msr">hourglass_top</span><div>Memuat data pembelian…</div></div></div>';
+
+  function draw(query){
+    apiCall('getPembelian', query?{query:query}:{}).then(function(res){
+      var list = res.data || [];
+      var totalBelanja = list.reduce(function(s,r){ return s + (Number(r['TOTAL INVOICE'])||0); }, 0);
+      document.getElementById('pbSummary').innerHTML = list.length ?
+        '<div class="card" style="margin:0 0 4px;"><div style="display:flex;justify-content:space-between;align-items:center;">'+
+          '<span style="font-size:12.5px;color:var(--ink-500);">Total '+list.length+' pembelian'+(query?' (hasil pencarian)':'')+'</span>'+
+          '<span style="font-weight:800;" class="tabular">'+rupiah(totalBelanja)+'</span>'+
+        '</div></div>' : '';
+      document.getElementById('pbListWrap').innerHTML = list.length ? list.map(function(r){
+        var gramasi = Number(r['GRAMASI / ML'])||0;
+        var subInfo = r['QTY']+' pcs'+(gramasi?' × '+gramasi+' gr/ml':'')+' • '+(r['TGL INVOICE']||'-');
+        return '<div class="listcard" data-id="'+r.ID+'">'+
+          '<div class="dotcat" style="background:var(--blue-700);"><span class="msr">inventory</span></div>'+
+          '<div class="info"><div class="t1">'+r['NAMA ITEM']+'</div><div class="t2">'+subInfo+' • '+(r['KATEGORI']||'-')+'</div></div>'+
+          '<div style="text-align:right;flex-shrink:0;"><div style="font-weight:800;" class="tabular">'+rupiah(r['TOTAL INVOICE'])+'</div>'+
+          '<div style="font-size:10.5px;color:var(--ink-500);" class="tabular">'+rupiah(r['HARGA /PCS'])+'/pcs</div></div>'+
+          '<div class="actions" style="margin-left:6px;"><button class="iconbtn" data-edit="'+r.ID+'"><span class="msr" style="font-size:18px;">edit</span></button><button class="iconbtn" data-del="'+r.ID+'"><span class="msr" style="font-size:18px;color:var(--red-600);">delete</span></button></div>'+
+        '</div>';
+      }).join('') : '<div class="empty"><span class="msr">local_shipping</span><div>Belum ada data pembelian</div></div>';
+      document.querySelectorAll('[data-edit]').forEach(function(b){ b.onclick=function(){ openPembelianForm(list.find(function(r){return String(r.ID)===b.getAttribute('data-edit');})); }; });
+      document.querySelectorAll('[data-del]').forEach(function(b){ b.onclick=function(){ if(confirm('Hapus data pembelian ini?')) apiCall('deletePembelian',{id:b.getAttribute('data-del')},'POST').then(function(){ toast('Data pembelian dihapus','check_circle'); renderPembelianList(); }); }; });
+    });
+  }
+  draw('');
+  document.getElementById('pbSearch').oninput = function(e){ draw(e.target.value); };
+}
+
+function openPembelianForm(r){
+  var kategoris = ['Bahan Baku','Kemasan','Peralatan','Operasional','Lainnya'];
+  var html =
+    '<div class="row2">'+
+      '<div class="field"><label>Nomor Invoice</label><input id="pbfNomorInv" placeholder="TIDAK ADA NO INVOICE" value="'+(r?r['NOMOR INVOICE']:'')+'"></div>'+
+      '<div class="field"><label>Tgl Invoice</label><input id="pbfTglInv" type="date" value="'+(r?toDateInputVal(r['TGL INVOICE']):'')+'"></div>'+
+    '</div>'+
+    '<div class="field"><label>Nama Item</label><input id="pbfNamaItem" placeholder="Contoh: TG16 - Matcha Powder 500GR" value="'+(r?r['NAMA ITEM']:'')+'"></div>'+
+    '<div class="row2">'+
+      '<div class="field"><label>Gramasi / ML per pcs</label><input id="pbfGramasi" type="number" placeholder="500" value="'+(r?r['GRAMASI / ML']:'')+'"></div>'+
+      '<div class="field"><label>Qty (jumlah pcs/kemasan)</label><input id="pbfQty" type="number" value="'+(r?r['QTY']:'')+'"></div>'+
+    '</div>'+
+    '<div class="field"><label>Harga Satuan (Rp per pcs)</label><input id="pbfHargaSatuan" type="number" value="'+(r?r['HARGA SATUAN']:'')+'"></div>'+
+    '<div class="row2">'+
+      '<div class="field"><label>Diskon Barang (Rp)</label><input id="pbfDiskonRp" type="number" value="'+(r?r['DISKON BARANG']:0)+'"></div>'+
+      '<div class="field"><label>Diskon (%)</label><input id="pbfDiskonPersen" type="number" value="'+(r?r['DISKON %']:0)+'"></div>'+
+    '</div>'+
+    '<div class="field"><label>Kategori</label><select id="pbfKategori">'+kategoris.map(function(k){ return '<option '+(r&&r['KATEGORI']===k?'selected':'')+'>'+k+'</option>'; }).join('')+'</select></div>'+
+    '<div class="field"><label>Keterangan</label><input id="pbfKeterangan" placeholder="Opsional…" value="'+(r?r['KETERANGAN']:'')+'"></div>'+
+    '<div id="pbfPreview" class="card" style="margin:4px 0 14px;"></div>'+
+    '<button class="btn btn-primary btn-block" id="pbfSave">'+(r?'Simpan Perubahan':'Tambah Pembelian')+'</button>';
+  openSheet(r?'Edit Pembelian':'Tambah Pembelian', html);
+
+  function recalcPreview(){
+    var qty = Number(document.getElementById('pbfQty').value)||0;
+    var harga = Number(document.getElementById('pbfHargaSatuan').value)||0;
+    var gramasi = Number(document.getElementById('pbfGramasi').value)||0;
+    var diskonRp = Number(document.getElementById('pbfDiskonRp').value)||0;
+    var diskonP = Number(document.getElementById('pbfDiskonPersen').value)||0;
+    var totalHarga = qty*harga;
+    var totalInvoice = totalHarga - diskonRp - Math.round(totalHarga*diskonP/100);
+    var totalQty = gramasi>0 ? qty*gramasi : qty;
+    var hargaPerPcs = totalQty>0 ? (totalInvoice/totalQty) : 0;
+    document.getElementById('pbfPreview').innerHTML =
+      '<div class="sumrow"><span>Total Harga</span><span class="tabular">'+rupiah(totalHarga)+'</span></div>'+
+      '<div class="sumrow"><span>Total Invoice (setelah diskon)</span><span class="tabular">'+rupiah(totalInvoice)+'</span></div>'+
+      '<div class="sumrow"><span>Total Qty (gr/ml/pcs)</span><span class="tabular">'+totalQty.toLocaleString('id-ID')+'</span></div>'+
+      '<div class="sumrow total" style="border:none;padding-top:6px;"><span>Harga per Pcs/Gr/ML</span><span class="tabular">'+rupiah(hargaPerPcs.toFixed(2))+'</span></div>';
+  }
+  ['pbfQty','pbfHargaSatuan','pbfGramasi','pbfDiskonRp','pbfDiskonPersen'].forEach(function(id){
+    document.getElementById(id).oninput = recalcPreview;
+  });
+  recalcPreview();
+
+  document.getElementById('pbfSave').onclick = function(){
+    var payload = {
+      id: r?r.ID:undefined,
+      nomorInvoice: document.getElementById('pbfNomorInv').value.trim() || 'TIDAK ADA NO INVOICE',
+      tglInvoice: fromDateInputVal(document.getElementById('pbfTglInv').value),
+      namaItem: document.getElementById('pbfNamaItem').value.trim(),
+      gramasi: document.getElementById('pbfGramasi').value,
+      qty: document.getElementById('pbfQty').value,
+      hargaSatuan: document.getElementById('pbfHargaSatuan').value,
+      diskonBarang: document.getElementById('pbfDiskonRp').value,
+      diskonPersen: document.getElementById('pbfDiskonPersen').value,
+      kategori: document.getElementById('pbfKategori').value,
+      keterangan: document.getElementById('pbfKeterangan').value.trim()
+    };
+    if(!payload.namaItem || !payload.qty){ toast('Nama item & Qty wajib diisi','error'); return; }
+    apiCall(r?'updatePembelian':'addPembelian', payload, 'POST').then(function(res){
+      if(res.error){ toast(res.error,'error'); return; }
+      toast('Data pembelian tersimpan','check_circle'); closeSheet(); renderPembelianList();
+    });
+  };
+}
+// Konversi tanggal dd/mm/yyyy (format umum invoice ID) <-> yyyy-mm-dd (input HTML date)
+function toDateInputVal(s){
+  if(!s) return '';
+  var parts = String(s).split('/');
+  if(parts.length===3) return parts[2]+'-'+parts[1].padStart(2,'0')+'-'+parts[0].padStart(2,'0');
+  return s; // sudah dalam format yyyy-mm-dd
+}
+function fromDateInputVal(s){
+  if(!s) return '';
+  var parts = s.split('-');
+  if(parts.length===3) return parts[2]+'/'+parts[1]+'/'+parts[0];
+  return s;
+}
+
 /* fab */
 document.getElementById('fab').onclick = function(){
   if(state.page==='produk') openProdukForm(null);
   else if(state.page==='kategori') openKategoriForm(null);
   else if(state.page==='member') openMemberForm(null);
   else if(state.page==='voucher') openVoucherForm(null);
+  else if(state.page==='pembelian') openPembelianForm(null);
 };
 
 /* =====================================================================
