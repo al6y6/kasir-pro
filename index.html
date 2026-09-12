@@ -116,9 +116,14 @@ button{font-family:inherit; cursor:pointer;}
 .pcard .img{aspect-ratio:1.25/1; background:var(--ink-100); display:flex; align-items:center; justify-content:center; overflow:hidden; position:relative;}
 .pcard .img img{width:100%; height:100%; object-fit:cover;}
 .pcard .img .msr{font-size:32px; color:var(--ink-300);}
-.badge{position:absolute; top:8px; left:8px; background:rgba(11,61,140,.85); color:#fff; font-size:10px; font-weight:700; padding:3px 8px; border-radius:8px;}
-.badge-low{position:absolute; bottom:8px; right:8px; background:var(--red-600); color:#fff; font-size:10px; font-weight:700; padding:3px 7px; border-radius:8px;}
-.pcard .body{padding:10px 11px 11px;}
+.badge-low{position:absolute; bottom:8px; right:8px; background:var(--red-600); color:#fff; font-size:10px; font-weight:700; padding:3px 7px; border-radius:8px; z-index:2;}
+.pcard .body{padding:9px 11px 11px;}
+.tags-row{display:flex; gap:4px; flex-wrap:wrap; margin-bottom:5px; min-height:17px;}
+.tag-kategori{background:var(--blue-100); color:var(--blue-700); font-size:9.5px; font-weight:700; padding:2px 7px; border-radius:6px; line-height:1.4; white-space:nowrap;}
+.tag-terlaris{background:#FFF3E0; color:#B7791F; font-size:9.5px; font-weight:800; padding:2px 7px; border-radius:6px; line-height:1.4; white-space:nowrap; display:inline-flex; align-items:center; gap:2px;}
+.tag-terlaris .msr{font-size:11px;}
+[data-theme="dark"] .tag-kategori{background:#152A52;}
+[data-theme="dark"] .tag-terlaris{background:#3A2C12;}
 .pcard .name{font-size:13px; font-weight:600; line-height:1.25; height:33px; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;}
 .pcard .price{font-family:var(--font-display); font-weight:800; color:var(--blue-700); font-size:15px; margin-top:5px;}
 .pcard .stok{font-size:11px; color:var(--ink-500); margin-top:1px; padding-right:32px;}
@@ -131,12 +136,13 @@ button{font-family:inherit; cursor:pointer;}
 /* list (horizontal) view mode for products */
 .grid.list-view{display:flex; flex-direction:column; grid-template-columns:none; gap:10px;}
 .grid.list-view .pcard{flex-direction:row; align-items:stretch;}
-.grid.list-view .pcard .img{aspect-ratio:auto; width:92px; height:92px; flex-shrink:0;}
-.grid.list-view .pcard .body{flex:1; padding:10px 12px; display:flex; flex-direction:column; justify-content:center;}
+.grid.list-view .pcard .img{aspect-ratio:auto; width:88px; height:88px; flex-shrink:0;}
+.grid.list-view .pcard .body{flex:1; padding:9px 12px; display:flex; flex-direction:column; justify-content:center;}
+.grid.list-view .tags-row{margin-bottom:3px; min-height:15px;}
 .grid.list-view .pcard .name{height:auto; -webkit-line-clamp:1;}
 .grid.list-view .addbtn{position:static; margin:auto 10px auto 0; align-self:center;}
 .grid.list-view .qtybox{position:static; margin:auto 8px auto 0; align-self:center; width:auto; left:auto; right:auto; bottom:auto;}
-.grid.list-view .badge,.grid.list-view .badge-low{font-size:9px; padding:2px 6px;}
+.grid.list-view .badge-low{font-size:9px; padding:2px 6px;}
 .skeleton{background:linear-gradient(90deg,var(--ink-100) 25%,var(--line) 37%,var(--ink-100) 63%); background-size:400% 100%; animation:shimmer 1.4s infinite;}
 @keyframes shimmer{0%{background-position:100% 0}100%{background-position:0 0}}
 .empty{display:flex; flex-direction:column; align-items:center; justify-content:center; padding:60px 24px; text-align:center; color:var(--ink-500);}
@@ -234,8 +240,6 @@ button{font-family:inherit; cursor:pointer;}
 .favstar .msr{font-size:16px; color:#fff;}
 .favstar.active .msr{color:#FFD43B; font-variation-settings:'FILL' 1;}
 .list-view .favstar{top:6px; right:6px;}
-.badge-terlaris{position:absolute; bottom:8px; left:8px; background:var(--amber); color:#fff; font-size:9.5px; font-weight:800; padding:3px 7px; border-radius:8px; display:flex; align-items:center; gap:2px;}
-.list-view .badge-terlaris{bottom:auto; top:34px; left:8px;}
 
 /* low stock banner */
 .lowstock-banner{margin:10px 14px 0; background:var(--red-100); border:1px solid var(--red-600); border-radius:12px; padding:10px 12px; display:flex; align-items:center; gap:10px; font-size:12.5px; color:var(--red-700); font-weight:600;}
@@ -270,8 +274,7 @@ button{font-family:inherit; cursor:pointer;}
     <button style="background:none;width:22px;height:22px;" id="btnCameraScan" title="Scan Barcode"><span class="msr" style="font-size:19px;">qr_code_scanner</span></button>
     <button style="background:none;width:22px;height:22px;" id="btnCloseSearch"><span class="msr" style="font-size:18px;">close</span></button>
   </div>
-  <button id="btnViewToggle" title="Tampilan"><span class="msr" id="btnViewToggleIcon">view_list</span></button>
-  <button id="btnSort" title="Urutkan"><span class="msr">sort</span></button>
+  <button id="btnDisplayOptions" title="Tampilan & Urutan"><span class="msr">tune</span></button>
   <button id="btnSearch" title="Cari"><span class="msr">search</span></button>
   <button id="btnCart" title="Keranjang" style="position:relative;">
     <span class="msr">shopping_cart</span>
@@ -500,8 +503,7 @@ function setPage(p){
   };
   document.getElementById('appbarTitle').innerHTML = titles[p][0] + '<small id="appbarSub">'+titles[p][1]+'</small>';
   var showTop = (p==='transaksi');
-  document.getElementById('btnViewToggle').style.display = showTop ? 'flex':'none';
-  document.getElementById('btnSort').style.display = showTop ? 'flex':'none';
+  document.getElementById('btnDisplayOptions').style.display = showTop ? 'flex':'none';
   document.getElementById('btnSearch').style.display = showTop ? 'flex':'none';
   document.getElementById('btnCart').style.display = showTop ? 'flex':'none';
   document.getElementById('searchbar').classList.remove('active');
@@ -1070,11 +1072,13 @@ function renderTransaksi(){
       return '<div class="pcard" data-id="'+p.ID+'">'+
         '<button class="favstar '+(isFav?'active':'')+'" data-fav="'+p.ID+'"><span class="msr">star</span></button>'+
         '<div class="img">'+(p.Foto?('<img src="'+p.Foto+'" loading="lazy">'):('<span class="msr">'+catIcon(p.Kategori)+'</span>'))+
-          '<span class="badge">'+ (p.Kategori||'') +'</span>'+
-          (isTerlaris?'<span class="badge-terlaris"><span class="msr" style="font-size:11px;">local_fire_department</span>Terlaris</span>':'')+
           (low?'<span class="badge-low">Stok '+p.Stok+'</span>':'')+
         '</div>'+
         '<div class="body">'+
+          '<div class="tags-row">'+
+            (p.Kategori?'<span class="tag-kategori">'+p.Kategori+'</span>':'')+
+            (isTerlaris?'<span class="tag-terlaris"><span class="msr">local_fire_department</span>Terlaris</span>':'')+
+          '</div>'+
           '<div class="name">'+p.Nama+'</div>'+
           '<div class="price tabular">'+rupiah(p.Harga)+'</div>'+
           '<div class="stok">Stok: '+p.Stok+'</div>'+
@@ -1089,9 +1093,6 @@ function renderTransaksi(){
   document.getElementById('page').innerHTML =
     '<div class="chips">'+chips+'</div>'+
     '<div class="grid '+(state.viewMode==='list'?'list-view':'')+'">'+gridHtml+'</div>';
-
-  var vtIcon = document.getElementById('btnViewToggleIcon');
-  if(vtIcon) vtIcon.textContent = state.viewMode==='list' ? 'grid_view' : 'view_list';
 
   document.querySelectorAll('.chip').forEach(function(c){ c.onclick=function(){ state.categoryFilter=c.getAttribute('data-cat'); renderTransaksi(); }; });
   document.querySelectorAll('[data-act="add"]').forEach(function(b){ b.onclick=function(){ addToCart(b.getAttribute('data-id')); }; });
@@ -1216,15 +1217,19 @@ function openBarcodeScanner(){
   });
 }
 
-document.getElementById('btnViewToggle').onclick = function(){
-  state.viewMode = state.viewMode==='list' ? 'grid' : 'list';
-  LS.set('viewMode', state.viewMode);
-  renderTransaksi();
-};
-document.getElementById('btnSort').onclick = function(){
+document.getElementById('btnDisplayOptions').onclick = function(){
   var opts = [['nama-asc','Nama A–Z'],['nama-desc','Nama Z–A'],['harga-asc','Harga Terendah'],['harga-desc','Harga Tertinggi'],['stok-asc','Stok Tersedikit']];
-  var html = opts.map(function(o){ return '<button class="btn btn-outline btn-block" style="justify-content:flex-start;margin-bottom:8px;" data-sort="'+o[0]+'">'+o[1]+'</button>'; }).join('');
-  openSheet('Urutkan Produk', html);
+  var html =
+    '<div class="field" style="margin-bottom:14px;"><label>Tampilan Produk</label>'+
+      '<div style="display:flex;gap:8px;">'+
+        '<button class="btn '+(state.viewMode==='grid'?'btn-primary':'btn-outline')+' btn-sm" style="flex:1;" data-view="grid"><span class="msr" style="font-size:17px;">grid_view</span> Grid</button>'+
+        '<button class="btn '+(state.viewMode==='list'?'btn-primary':'btn-outline')+' btn-sm" style="flex:1;" data-view="list"><span class="msr" style="font-size:17px;">view_list</span> List</button>'+
+      '</div>'+
+    '</div>'+
+    '<div class="field" style="margin-bottom:6px;"><label>Urutkan</label></div>'+
+    opts.map(function(o){ return '<button class="btn '+(state.sortMode===o[0]?'btn-primary':'btn-outline')+' btn-block" style="justify-content:flex-start;margin-bottom:8px;" data-sort="'+o[0]+'">'+o[1]+'</button>'; }).join('');
+  openSheet('Tampilan & Urutan', html);
+  document.querySelectorAll('[data-view]').forEach(function(b){ b.onclick=function(){ state.viewMode=b.getAttribute('data-view'); LS.set('viewMode', state.viewMode); closeSheet(); renderTransaksi(); }; });
   document.querySelectorAll('[data-sort]').forEach(function(b){ b.onclick=function(){ state.sortMode=b.getAttribute('data-sort'); closeSheet(); renderTransaksi(); }; });
 };
 
