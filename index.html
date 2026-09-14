@@ -1640,9 +1640,141 @@ function openTrxDetail(invoice){
    LAPORAN
 ===================================================================== */
 var reportChart;
+function loadStokOpname(){
+  apiCall('getStokOpnameDates').then(function(res){
+    var dates = res.data || [];
+    var html = '<div class="section-title">Stok Bahan Baku</div>'+
+      '<div style="font-size:11.5px;color:var(--ink-500);padding:0 14px 10px;">Catat sisa stok bahan baku secara berkala. Sistem otomatis menghitung berapa yang terpakai dibanding sesi opname sebelumnya (ditambah pembelian baru di antaranya).</div>'+
+      '<div style="padding:0 14px 10px;"><button class="btn btn-primary btn-block" id="btnNewOpname"><span class="msr">playlist_add</span> Catat Stok Opname Baru</button></div>';
+    if(!dates.length){
+      html += '<div class="empty"><span class="msr">inventory</span><div>Belum ada catatan stok opname</div></div>';
+    } else {
+      html += '<div class="section-title" style="padding-top:4px;">Riwayat Sesi</div>';
+      html += dates.map(function(d){
+        return '<div class="listcard" data-opname-date="'+d.tanggal+'">'+
+          '<div class="thumb"><span class="msr">event_note</span></div>'+
+          '<div class="info"><div class="t1">'+d.tanggal+'</div><div class="t2">'+d.jumlahItem+' item dicatat</div></div>'+
+          '<div class="actions"><button class="iconbtn" data-del-opname="'+d.tanggal+'"><span class="msr" style="font-size:18px;color:var(--red-600);">delete</span></button></div>'+
+        '</div>';
+      }).join('');
+    }
+    document.getElementById('reportBody').innerHTML = html;
+    document.getElementById('btnNewOpname').onclick = openStokOpnameForm;
+    document.querySelectorAll('[data-opname-date]').forEach(function(el){ el.onclick=function(e){ if(e.target.closest('[data-del-opname]')) return; openStokOpnameDetail(el.getAttribute('data-opname-date')); }; });
+    document.querySelectorAll('[data-del-opname]').forEach(function(b){ b.onclick=function(e){ e.stopPropagation(); if(confirm('Hapus seluruh sesi opname tanggal '+b.getAttribute('data-del-opname')+'?')) apiCall('deleteStokOpnameSession',{tanggal:b.getAttribute('data-del-opname')},'POST').then(function(){ toast('Sesi opname dihapus','check_circle'); loadStokOpname(); }); }; });
+  }).catch(function(err){ document.getElementById('reportBody').innerHTML = '<div class="empty"><span class="msr">error</span><div>'+err.message+'</div></div>'; });
+}
+
+var opnameCatCounter = 0;
+function opnameRowHtml(item){
+  item = item || {};
+  return '<div class="opname-row" style="display:flex;gap:6px;margin-bottom:6px;align-items:center;" data-row>'+
+    '<input placeholder="Nama item" value="'+(item.namaItem||'')+'" class="opname-nama" style="flex:2;min-width:0;border:1.5px solid var(--line);border-radius:8px;padding:8px 10px;font-size:13px;background:var(--surface);">'+
+    '<input type="number" placeholder="Sisa" value="'+(item.sisaStok!==undefined?item.sisaStok:'')+'" class="opname-sisa" style="flex:0 0 64px;border:1.5px solid var(--line);border-radius:8px;padding:8px 8px;font-size:13px;background:var(--surface);">'+
+    '<select class="opname-satuan" style="flex:0 0 58px;border:1.5px solid var(--line);border-radius:8px;padding:8px 2px;font-size:12px;background:var(--surface);">'+
+      ['gr','ml','pcs'].map(function(u){ return '<option '+(item.satuan===u?'selected':'')+'>'+u+'</option>'; }).join('')+
+    '</select>'+
+    '<button class="iconbtn" data-remove-row style="width:30px;height:30px;flex-shrink:0;"><span class="msr" style="font-size:16px;color:var(--red-600);">close</span></button>'+
+  '</div>';
+}
+function opnameCategoryBlockHtml(catId, catName, items){
+  items = items && items.length ? items : [{satuan:'gr'}];
+  return '<div class="card" data-cat-block="'+catId+'" style="margin:0 0 10px;">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;">'+
+      '<input data-cat-name="'+catId+'" value="'+catName+'" style="border:none;background:none;font-weight:800;font-size:14px;padding:0;flex:1;min-width:0;color:var(--ink-900);">'+
+      '<button class="iconbtn" data-remove-cat style="width:28px;height:28px;flex-shrink:0;"><span class="msr" style="font-size:16px;color:var(--red-600);">delete</span></button>'+
+    '</div>'+
+    '<div class="opname-rows" data-rows-for="'+catId+'">'+items.map(opnameRowHtml).join('')+'</div>'+
+    '<button class="btn btn-outline btn-sm btn-block" data-add-row="'+catId+'" style="margin-top:4px;"><span class="msr" style="font-size:15px;">add</span> Tambah Item</button>'+
+  '</div>';
+}
+
+function openStokOpnameForm(){
+  opnameCatCounter = 0;
+  var defaultCats = [
+    ['Bubuk',[{satuan:'gr'}]],
+    ['Bungkus Utuh',[{satuan:'pcs'}]],
+    ['Bungkus Kecil',[{satuan:'pcs'}]],
+    ['Cup',[{satuan:'pcs'}]]
+  ];
+  var blocksHtml = defaultCats.map(function(c){ return opnameCategoryBlockHtml('cat'+(opnameCatCounter++), c[0], c[1]); }).join('');
+
+  var html =
+    '<div class="field"><label>Tanggal Opname</label><input type="date" id="opTanggal" value="'+fmtDate(new Date())+'"></div>'+
+    '<div id="opnameCatsWrap">'+blocksHtml+'</div>'+
+    '<button class="btn btn-outline btn-block" id="btnAddCatBlock" style="margin-bottom:14px;"><span class="msr">add</span> Tambah Kategori</button>'+
+    '<button class="btn btn-primary btn-block" id="btnSaveOpname">Simpan Stok Opname</button>';
+  openSheet('Catat Stok Opname', html);
+
+  var wrap = document.getElementById('opnameCatsWrap');
+  wrap.onclick = function(e){
+    var addRowBtn = e.target.closest('[data-add-row]');
+    if(addRowBtn){
+      wrap.querySelector('[data-rows-for="'+addRowBtn.getAttribute('data-add-row')+'"]').insertAdjacentHTML('beforeend', opnameRowHtml({satuan:'gr'}));
+      return;
+    }
+    var removeRowBtn = e.target.closest('[data-remove-row]');
+    if(removeRowBtn){ removeRowBtn.closest('[data-row]').remove(); return; }
+    var removeCatBtn = e.target.closest('[data-remove-cat]');
+    if(removeCatBtn){ if(confirm('Hapus kategori ini beserta semua itemnya dari form?')) removeCatBtn.closest('[data-cat-block]').remove(); return; }
+  };
+
+  document.getElementById('btnAddCatBlock').onclick = function(){
+    var name = prompt('Nama kategori baru (contoh: Sirup, Bahan Kemasan, dll):');
+    if(!name) return;
+    wrap.insertAdjacentHTML('beforeend', opnameCategoryBlockHtml('cat'+(opnameCatCounter++), name, [{satuan:'gr'}]));
+  };
+
+  document.getElementById('btnSaveOpname').onclick = function(){
+    var tanggalIso = document.getElementById('opTanggal').value;
+    if(!tanggalIso){ toast('Pilih tanggal opname','error'); return; }
+    var items = [];
+    document.querySelectorAll('[data-cat-block]').forEach(function(block){
+      var catId = block.getAttribute('data-cat-block');
+      var catNameInput = block.querySelector('[data-cat-name="'+catId+'"]');
+      var catName = catNameInput.value.trim() || 'Lainnya';
+      block.querySelectorAll('[data-row]').forEach(function(row){
+        var nama = row.querySelector('.opname-nama').value.trim();
+        var sisa = row.querySelector('.opname-sisa').value;
+        var satuan = row.querySelector('.opname-satuan').value;
+        if(nama) items.push({ kategori: catName, namaItem: nama, sisaStok: sisa||0, satuan: satuan });
+      });
+    });
+    if(!items.length){ toast('Isi minimal 1 item','error'); return; }
+    apiCall('addStokOpnameBatch', { tanggal: tanggalIso, items: JSON.stringify(items) }, 'POST').then(function(res){
+      if(res.error){ toast(res.error,'error'); return; }
+      toast(res.count+' item stok tersimpan untuk '+res.tanggal,'check_circle');
+      closeSheet();
+      loadStokOpname();
+    }).catch(function(){ toast('Gagal menyimpan stok opname','error'); });
+  };
+}
+
+function openStokOpnameDetail(tanggal){
+  openSheet('Stok Opname — '+tanggal, '<div class="empty"><span class="msr">hourglass_top</span><div>Memuat…</div></div>');
+  apiCall('getStokUsageReport', { tanggal: tanggal }).then(function(res){
+    var list = res.data || [];
+    var groups = {};
+    list.forEach(function(item){ (groups[item.kategori]=groups[item.kategori]||[]).push(item); });
+    var html = res.priorDate
+      ? '<div style="font-size:11.5px;color:var(--ink-500);margin-bottom:10px;">Dibandingkan dengan sesi sebelumnya: <b>'+res.priorDate+'</b></div>'
+      : '<div style="font-size:11.5px;color:var(--ink-500);margin-bottom:10px;">Ini sesi opname pertama — belum ada perbandingan pemakaian.</div>';
+    Object.keys(groups).forEach(function(kat){
+      html += '<div style="font-weight:800;font-size:13px;margin:10px 0 6px;padding-bottom:4px;border-bottom:1px solid var(--line);">'+kat+'</div>';
+      html += groups[kat].map(function(item){
+        var terpakaiTxt = item.terpakai !== null ? item.terpakai.toLocaleString('id-ID')+' '+item.satuan : null;
+        var warnaTerpakai = (item.terpakai !== null && item.terpakai < 0) ? 'var(--red-600)' : 'var(--ink-500)';
+        return '<div class="sumrow" style="margin-bottom:0;"><span>'+item.namaItem+'</span><span class="tabular" style="font-weight:700;">'+item.sisaSekarang+' '+item.satuan+'</span></div>'+
+          (terpakaiTxt ? '<div style="font-size:10.5px;color:'+warnaTerpakai+';margin:-2px 0 8px;">Terpakai: '+terpakaiTxt+(item.dibeli>0?' (termasuk pembelian baru '+item.dibeli.toLocaleString('id-ID')+' '+item.satuan+')':'')+'</div>' : '<div style="margin-bottom:8px;"></div>');
+      }).join('');
+    });
+    document.getElementById('sheetBody').innerHTML = html;
+  }).catch(function(err){ document.getElementById('sheetBody').innerHTML = '<div class="empty"><span class="msr">error</span><div>'+err.message+'</div></div>'; });
+}
+
 function renderLaporan(){
   document.getElementById('page').innerHTML =
-    '<div class="subtabs"><button class="subtab active" data-p="harian">Harian</button><button class="subtab" data-p="mingguan">Mingguan</button><button class="subtab" data-p="bulanan">Bulanan</button><button class="subtab" data-p="tahunan">Tahunan</button><button class="subtab" data-p="arsip">Arsip Otomatis</button></div>'+
+    '<div class="subtabs"><button class="subtab active" data-p="harian">Harian</button><button class="subtab" data-p="mingguan">Mingguan</button><button class="subtab" data-p="bulanan">Bulanan</button><button class="subtab" data-p="tahunan">Tahunan</button><button class="subtab" data-p="arsip">Arsip Otomatis</button><button class="subtab" data-p="stok">Stok Bahan Baku</button></div>'+
     '<div id="reportBody"><div class="empty"><span class="msr">hourglass_top</span><div>Memuat laporan…</div></div></div>';
 
   function loadArchive(){
@@ -1667,6 +1799,7 @@ function renderLaporan(){
 
   function load(period){
     if(period==='arsip'){ loadArchive(); return; }
+    if(period==='stok'){ loadStokOpname(); return; }
     var now = new Date(), from;
     if(period==='harian'){ from = fmtDate(now); }
     else if(period==='mingguan'){ var d=new Date(now); d.setDate(d.getDate()-7); from=fmtDate(d); }
