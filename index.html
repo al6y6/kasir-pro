@@ -229,6 +229,8 @@ button{font-family:inherit; cursor:pointer;}
 .subtab.active{background:var(--blue-700); color:#fff;}
 
 .spreadcard{background:var(--surface-hi); border-radius:16px; padding:14px; margin:0 14px 10px; box-shadow:var(--shadow-1); border:1.5px solid var(--line); position:relative;}
+.opname-row{padding-bottom:10px; margin-bottom:10px; border-bottom:1px dashed var(--line);}
+.opname-row:last-child{border-bottom:none; margin-bottom:0; padding-bottom:0;}
 .spreadcard.active{border-color:var(--blue-700);}
 .spreadcard .top{display:flex; justify-content:space-between; align-items:flex-start;}
 .spreadcard .nm{font-weight:700; font-size:14.5px;}
@@ -289,6 +291,7 @@ button{font-family:inherit; cursor:pointer;}
     <div class="brand" id="drawerBrand"><span class="msr" id="drawerLogoIcon">storefront</span><img id="drawerLogoImg" style="display:none;width:30px;height:30px;border-radius:8px;object-fit:cover;" alt="Logo Toko"> <span id="drawerBrandText">Kasir Pro</span></div>
     <div class="sub" id="drawerStoreName">Belum terhubung</div>
     <div class="drawer-sync" id="drawerSync"><span class="dot red"></span> Tidak Terhubung</div>
+    <div class="drawer-sync" id="drawerOfflineQueue" style="display:none;background:rgba(196,41,27,.25);margin-top:6px;"><span class="msr" style="font-size:13px;">cloud_off</span> <span id="drawerOfflineQueueText"></span></div>
   </div>
   <nav>
     <div class="nav-sep">Operasional</div>
@@ -967,33 +970,31 @@ function connectAndLoad(){
   if(!ss){ render(); return; }
   state.syncing = true; updateSyncBadge();
   apiCall('init', {}, 'POST').then(function(){
-    return Promise.all([ apiCall('getProducts'), apiCall('getCategories') ]);
+    return apiCall('bootstrap', { threshold: state.lowStockThreshold });
   }).then(function(res){
     state.connected = true; state.syncing = false;
-    state.produk = res[0].data || [];
-    state.kategori = res[1].data || [];
+    state.produk = res.produk || [];
+    state.kategori = res.kategori || [];
     if(state.cacheEnabled){ LS.set('produk_cache', state.produk); LS.set('kategori_cache', state.kategori); }
     LS.set('lastSync', new Date().toLocaleString('id-ID'));
+
+    var d = res.dashboard || {};
+    state.terlarisNames = (d.produkTerlaris||[]).map(function(p){ return p.nama; });
+    var lowCount = (d.produkHampirHabis||[]).length;
+    if(lowCount > 0 && lowCount !== state.lastLowStockCount){
+      toast(lowCount+' produk stok menipis! Cek Dashboard.', 'warning');
+    }
+    state.lastLowStockCount = lowCount;
+    LS.set('lastLowStockCount', lowCount);
+
+    var s = res.settings || {};
+    state.loyaltySettings.poinPerRp = Number(s.poinPerRp) || state.loyaltySettings.poinPerRp;
+    state.loyaltySettings.nilaiPerPoin = Number(s.nilaiPerPoin) || state.loyaltySettings.nilaiPerPoin;
+    LS.set('loyaltySettings', state.loyaltySettings);
+
     updateSyncBadge();
     flushOfflineQueue();
     render();
-    // ambil data terlaris & cek stok menipis (tidak blocking, gagal pun aman)
-    apiCall('getDashboard', { threshold: state.lowStockThreshold }).then(function(d){
-      state.terlarisNames = (d.produkTerlaris||[]).map(function(p){ return p.nama; });
-      var lowCount = (d.produkHampirHabis||[]).length;
-      if(lowCount > 0 && lowCount !== state.lastLowStockCount){
-        toast(lowCount+' produk stok menipis! Cek Dashboard.', 'warning');
-      }
-      state.lastLowStockCount = lowCount;
-      LS.set('lastLowStockCount', lowCount);
-      if(state.page==='transaksi') renderTransaksi();
-    }).catch(function(){});
-    apiCall('getSettings').then(function(res){
-      var s = res.data || {};
-      state.loyaltySettings.poinPerRp = Number(s.poinPerRp) || state.loyaltySettings.poinPerRp;
-      state.loyaltySettings.nilaiPerPoin = Number(s.nilaiPerPoin) || state.loyaltySettings.nilaiPerPoin;
-      LS.set('loyaltySettings', state.loyaltySettings);
-    }).catch(function(){});
   }).catch(function(err){
     state.connected = false; state.syncing = false; updateSyncBadge();
     toast('Gagal terhubung: '+err.message, 'error');
@@ -1009,6 +1010,22 @@ function updateSyncBadge(){
   if(state.syncing){ el.innerHTML = '<span class="dot yellow"></span> Sinkronisasi…'; }
   else if(state.connected){ el.innerHTML = '<span class="dot"></span> Terhubung'; }
   else { el.innerHTML = '<span class="dot red"></span> Tidak Terhubung'; }
+
+  var oq = document.getElementById('drawerOfflineQueue');
+  var oqText = document.getElementById('drawerOfflineQueueText');
+  if(state.offlineQueue.length > 0){
+    oq.style.display = 'flex';
+    oqText.textContent = state.offlineQueue.length+' transaksi belum terkirim — ketuk untuk coba kirim';
+    oq.style.cursor = 'pointer';
+    oq.onclick = function(){
+      if(!navigator.onLine){ toast('Masih offline, coba lagi setelah terhubung internet','error'); return; }
+      toast('Mengirim transaksi tertunda…','sync');
+      flushOfflineQueue();
+    };
+  } else {
+    oq.style.display = 'none';
+    oq.onclick = null;
+  }
 }
 
 function setupAutoSync(){
@@ -1021,9 +1038,21 @@ function setupAutoSync(){
 /* offline queue */
 function flushOfflineQueue(){
   if(!state.offlineQueue.length || !navigator.onLine) return;
-  var queue = state.offlineQueue.slice(); state.offlineQueue = []; LS.set('offline_queue', []);
-  queue.forEach(function(trx){
-    apiCall('createTransaction', trx, 'POST').catch(function(){ state.offlineQueue.push(trx); LS.set('offline_queue', state.offlineQueue); });
+  var queue = state.offlineQueue.slice();
+  state.offlineQueue = []; LS.set('offline_queue', []);
+  updateSyncBadge();
+  var successCount = 0, failCount = 0;
+  var promises = queue.map(function(trx){
+    return apiCall('createTransaction', trx, 'POST').then(function(res){
+      if(res && res.error){ state.offlineQueue.push(trx); failCount++; }
+      else { successCount++; }
+    }).catch(function(){ state.offlineQueue.push(trx); failCount++; });
+  });
+  Promise.all(promises).then(function(){
+    LS.set('offline_queue', state.offlineQueue);
+    updateSyncBadge();
+    if(successCount>0) toast(successCount+' transaksi offline berhasil terkirim ✔','check_circle');
+    if(failCount>0) toast(failCount+' transaksi masih gagal terkirim, akan dicoba lagi','error');
   });
 }
 window.addEventListener('online', flushOfflineQueue);
@@ -1407,6 +1436,7 @@ function finalizeTransaction(sub, diskon, pajak, total, bayar){
 
   if(!navigator.onLine){
     state.offlineQueue.push(payload); LS.set('offline_queue', state.offlineQueue);
+    updateSyncBadge();
     toast('Offline — transaksi disimpan & akan dikirim otomatis','cloud_off');
     afterSuccess('OFFLINE-'+Date.now(), 0);
     return;
@@ -1417,6 +1447,7 @@ function finalizeTransaction(sub, diskon, pajak, total, bayar){
     afterSuccess(res.invoice, res.poinDiperoleh);
   }).catch(function(){
     state.offlineQueue.push(payload); LS.set('offline_queue', state.offlineQueue);
+    updateSyncBadge();
     toast('Gagal kirim — disimpan ke antrean offline','cloud_off');
     afterSuccess('OFFLINE-'+Date.now(), 0);
   });
@@ -1525,9 +1556,56 @@ function showReceipt(invoice, items, sub, diskon, pajak, total, bayar, kembalian
   document.getElementById('btnPrint').onclick = function(){ doPrint(); };
   document.getElementById('btnBtPrint').onclick = function(){ printBluetooth(invoice, items, sub, diskon, pajak, total, bayar, kembalian); };
   document.getElementById('btnWa').onclick = function(){
-    var text = 'Struk '+invoice+'\\n' + items.map(function(c){return c.nama+' x'+c.qty+' = '+rupiah(c.qty*c.harga);}).join('\\n') + '\\nTotal: '+rupiah(total);
-    window.open('https://wa.me/?text='+encodeURIComponent(text), '_blank');
+    shareReceiptWhatsApp(invoice, items, sub, diskon, pajak, total, bayar, kembalian, metode);
   };
+}
+
+// Bikin satu baris teks rata kanan-kiri ala struk kasir (label di kiri,
+// nominal di kanan), memakai format monospace WhatsApp (dibungkus ```).
+function receiptLine(label, value, width){
+  width = width || 32;
+  var spaces = width - label.length - value.length;
+  if(spaces < 1) spaces = 1;
+  return label + ' '.repeat(spaces) + value;
+}
+
+function shareReceiptWhatsApp(invoice, items, sub, diskon, pajak, total, bayar, kembalian, metode){
+  var sp = state.storeProfile;
+  var width = 32;
+  var now = new Date();
+  var tglJam = now.toLocaleDateString('id-ID') + ' ' + now.toLocaleTimeString('id-ID', {hour:'2-digit', minute:'2-digit'});
+
+  var lines = [];
+  lines.push('*'+(sp.nama||'Toko Saya')+'*');
+  if(sp.alamat) lines.push(sp.alamat);
+  if(sp.telp) lines.push(sp.telp);
+  lines.push('');
+  lines.push('No. Invoice : '+invoice);
+  lines.push('Tanggal     : '+tglJam);
+  lines.push('');
+  lines.push('```');
+  items.forEach(function(c){
+    var namaQty = c.nama+' x'+c.qty;
+    var harga = rupiah(c.qty*c.harga);
+    if((namaQty.length + harga.length + 1) > width){
+      lines.push(namaQty);
+      lines.push(harga.padStart(width, ' '));
+    } else {
+      lines.push(receiptLine(namaQty, harga, width));
+    }
+  });
+  lines.push('-'.repeat(width));
+  lines.push(receiptLine('Subtotal', rupiah(sub), width));
+  if(diskon>0) lines.push(receiptLine('Diskon', '-'+rupiah(diskon), width));
+  if(pajak>0) lines.push(receiptLine('Pajak', rupiah(pajak), width));
+  lines.push(receiptLine('TOTAL', rupiah(total), width));
+  lines.push(receiptLine('Bayar ('+metode+')', rupiah(bayar), width));
+  lines.push(receiptLine('Kembali', rupiah(Math.max(kembalian,0)), width));
+  lines.push('```');
+  if(state.receiptSettings.footer){ lines.push(''); lines.push('_'+state.receiptSettings.footer+'_'); }
+
+  var text = lines.join('\n');
+  window.open('https://wa.me/?text='+encodeURIComponent(text), '_blank');
 }
 
 /* =====================================================================
@@ -1668,15 +1746,20 @@ function loadStokOpname(){
 var opnameCatCounter = 0;
 function opnameRowHtml(item){
   item = item || {};
-  return '<div class="opname-row" style="display:flex;gap:6px;margin-bottom:6px;align-items:center;" data-row>'+
-    '<input placeholder="Nama item" value="'+(item.namaItem||'')+'" class="opname-nama" style="flex:2;min-width:0;border:1.5px solid var(--line);border-radius:8px;padding:8px 10px;font-size:13px;background:var(--surface);">'+
-    '<input type="number" placeholder="Sisa" value="'+(item.sisaStok!==undefined?item.sisaStok:'')+'" class="opname-sisa" style="flex:0 0 64px;border:1.5px solid var(--line);border-radius:8px;padding:8px 8px;font-size:13px;background:var(--surface);">'+
-    '<select class="opname-satuan" style="flex:0 0 58px;border:1.5px solid var(--line);border-radius:8px;padding:8px 2px;font-size:12px;background:var(--surface);">'+
-      ['gr','ml','pcs'].map(function(u){ return '<option '+(item.satuan===u?'selected':'')+'>'+u+'</option>'; }).join('')+
-    '</select>'+
-    '<button class="iconbtn" data-remove-row style="width:30px;height:30px;flex-shrink:0;"><span class="msr" style="font-size:16px;color:var(--red-600);">close</span></button>'+
+  return '<div class="opname-row" data-row>'+
+    '<div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;">'+
+      '<input placeholder="Nama item bahan baku" value="'+(item.namaItem||'')+'" class="opname-nama" style="flex:1;min-width:0;border:1.5px solid var(--line);border-radius:8px;padding:9px 11px;font-size:13.5px;background:var(--surface);">'+
+      '<button class="iconbtn" data-remove-row style="width:32px;height:32px;flex-shrink:0;"><span class="msr" style="font-size:17px;color:var(--red-600);">close</span></button>'+
+    '</div>'+
+    '<div style="display:flex;gap:8px;">'+
+      '<input type="number" placeholder="Sisa stok" value="'+(item.sisaStok!==undefined?item.sisaStok:'')+'" class="opname-sisa" style="flex:1;min-width:0;border:1.5px solid var(--line);border-radius:8px;padding:9px 11px;font-size:13.5px;background:var(--surface);">'+
+      '<select class="opname-satuan" style="flex:0 0 84px;border:1.5px solid var(--line);border-radius:8px;padding:9px 6px;font-size:13px;background:var(--surface);">'+
+        ['gr','ml','pcs'].map(function(u){ return '<option '+(item.satuan===u?'selected':'')+'>'+u+'</option>'; }).join('')+
+      '</select>'+
+    '</div>'+
   '</div>';
 }
+
 function opnameCategoryBlockHtml(catId, catName, items){
   items = items && items.length ? items : [{satuan:'gr'}];
   return '<div class="card" data-cat-block="'+catId+'" style="margin:0 0 10px;">'+
@@ -1781,12 +1864,12 @@ function renderLaporan(){
     apiCall('getReportArchive').then(function(res){
       var list = res.data || [];
       var html = '<div class="section-title">Arsip Laporan Harian Otomatis</div>'+
-        '<div style="font-size:11.5px;color:var(--ink-500);padding:0 14px 10px;">Dibuat otomatis tiap hari sesuai jadwal di Pengaturan → Laporan Otomatis. Bisa juga dipicu manual lewat tombol "Buat Laporan Sekarang" di sana.</div>';
+        '<div style="font-size:11.5px;color:var(--ink-500);padding:0 14px 10px;">Dibuat otomatis tiap hari sesuai jadwal di Pengaturan → Laporan Otomatis. Ketuk salah satu tanggal untuk lihat item yang terjual hari itu.</div>';
       if(!list.length){
         html += '<div class="empty"><span class="msr">event_note</span><div>Belum ada arsip laporan. Aktifkan jadwal di Pengaturan.</div></div>';
       } else {
         html += list.map(function(r){
-          return '<div class="listcard" style="display:flex;">'+
+          return '<div class="listcard" style="display:flex;cursor:pointer;" data-archive-date="'+r.Tanggal+'">'+
             '<div class="thumb"><span class="msr">calendar_month</span></div>'+
             '<div class="info"><div class="t1">'+r.Tanggal+'</div><div class="t2">'+r.TotalTransaksi+' transaksi • Laba kotor '+rupiah(r.LabaKotor)+'</div></div>'+
             '<div style="text-align:right;"><div style="font-weight:800;" class="tabular">'+rupiah(r.TotalPenjualan)+'</div></div>'+
@@ -1794,7 +1877,29 @@ function renderLaporan(){
         }).join('');
       }
       document.getElementById('reportBody').innerHTML = html;
+      document.querySelectorAll('[data-archive-date]').forEach(function(el){
+        el.onclick = function(){ openArchiveDetail(el.getAttribute('data-archive-date')); };
+      });
     }).catch(function(err){ document.getElementById('reportBody').innerHTML = '<div class="empty"><span class="msr">error</span><div>'+err.message+'</div></div>'; });
+  }
+
+  function openArchiveDetail(tanggal){
+    openSheet('Item Terjual — '+tanggal, '<div class="empty"><span class="msr">hourglass_top</span><div>Memuat…</div></div>');
+    apiCall('getReport', { from: tanggal, to: tanggal }).then(function(r){
+      var produkTerlaris = r.produkTerlaris || [];
+      var html = '<div class="sumrow total" style="border:none;padding-top:0;"><span>Total Penjualan</span><span class="tabular">'+rupiah(r.totalPenjualan)+'</span></div>'+
+        '<div class="sumrow"><span>Total Transaksi</span><span class="tabular">'+r.totalTransaksi+'</span></div>'+
+        '<div style="height:8px;"></div>'+
+        '<div style="font-weight:800;font-size:13px;margin-bottom:6px;padding-bottom:6px;border-bottom:1px solid var(--line);">Item Terjual</div>';
+      if(!produkTerlaris.length){
+        html += '<div style="font-size:12.5px;color:var(--ink-500);padding:10px 0;">Tidak ada item terjual pada tanggal ini</div>';
+      } else {
+        html += produkTerlaris.map(function(p, i){
+          return '<div class="listrow"><span style="display:flex;align-items:center;"><span class="rank">'+(i+1)+'</span>'+p.nama+'</span><span class="tabular" style="font-weight:700;">'+p.qty+' terjual</span></div>';
+        }).join('');
+      }
+      document.getElementById('sheetBody').innerHTML = html;
+    }).catch(function(err){ document.getElementById('sheetBody').innerHTML = '<div class="empty"><span class="msr">error</span><div>'+err.message+'</div></div>'; });
   }
 
   function load(period){
