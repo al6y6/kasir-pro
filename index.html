@@ -972,33 +972,58 @@ function connectAndLoad(){
   apiCall('init', {}, 'POST').then(function(){
     return apiCall('bootstrap', { threshold: state.lowStockThreshold });
   }).then(function(res){
-    state.connected = true; state.syncing = false;
-    state.produk = res.produk || [];
-    state.kategori = res.kategori || [];
-    if(state.cacheEnabled){ LS.set('produk_cache', state.produk); LS.set('kategori_cache', state.kategori); }
-    LS.set('lastSync', new Date().toLocaleString('id-ID'));
-
-    var d = res.dashboard || {};
-    state.terlarisNames = (d.produkTerlaris||[]).map(function(p){ return p.nama; });
-    var lowCount = (d.produkHampirHabis||[]).length;
-    if(lowCount > 0 && lowCount !== state.lastLowStockCount){
-      toast(lowCount+' produk stok menipis! Cek Dashboard.', 'warning');
+    if(res.error){
+      // 'bootstrap' belum dikenal server (Code.gs belum di-redeploy) —
+      // otomatis pakai cara lama supaya aplikasi tetap bisa jalan.
+      if(String(res.error).indexOf('bootstrap') > -1){
+        return legacyBootstrapFallback();
+      }
+      throw new Error(res.error);
     }
-    state.lastLowStockCount = lowCount;
-    LS.set('lastLowStockCount', lowCount);
-
-    var s = res.settings || {};
-    state.loyaltySettings.poinPerRp = Number(s.poinPerRp) || state.loyaltySettings.poinPerRp;
-    state.loyaltySettings.nilaiPerPoin = Number(s.nilaiPerPoin) || state.loyaltySettings.nilaiPerPoin;
-    LS.set('loyaltySettings', state.loyaltySettings);
-
-    updateSyncBadge();
-    flushOfflineQueue();
-    render();
+    applyBootstrapResult(res);
   }).catch(function(err){
     state.connected = false; state.syncing = false; updateSyncBadge();
     toast('Gagal terhubung: '+err.message, 'error');
     render();
+  });
+}
+
+function applyBootstrapResult(res){
+  state.connected = true; state.syncing = false;
+  state.produk = res.produk || [];
+  state.kategori = res.kategori || [];
+  if(state.cacheEnabled){ LS.set('produk_cache', state.produk); LS.set('kategori_cache', state.kategori); }
+  LS.set('lastSync', new Date().toLocaleString('id-ID'));
+
+  var d = res.dashboard || {};
+  state.terlarisNames = (d.produkTerlaris||[]).map(function(p){ return p.nama; });
+  var lowCount = (d.produkHampirHabis||[]).length;
+  if(lowCount > 0 && lowCount !== state.lastLowStockCount){
+    toast(lowCount+' produk stok menipis! Cek Dashboard.', 'warning');
+  }
+  state.lastLowStockCount = lowCount;
+  LS.set('lastLowStockCount', lowCount);
+
+  var s = res.settings || {};
+  state.loyaltySettings.poinPerRp = Number(s.poinPerRp) || state.loyaltySettings.poinPerRp;
+  state.loyaltySettings.nilaiPerPoin = Number(s.nilaiPerPoin) || state.loyaltySettings.nilaiPerPoin;
+  LS.set('loyaltySettings', state.loyaltySettings);
+
+  updateSyncBadge();
+  flushOfflineQueue();
+  render();
+}
+
+// Dipakai HANYA sebagai cadangan kalau Code.gs di server masih versi lama
+// (belum punya aksi 'bootstrap'). Fungsinya sama seperti sebelum digabung.
+function legacyBootstrapFallback(){
+  toast('Server belum di-update (Code.gs lama) — pakai mode kompatibilitas','warning');
+  return Promise.all([ apiCall('getProducts'), apiCall('getCategories') ]).then(function(res){
+    applyBootstrapResult({ produk: res[0].data, kategori: res[1].data, dashboard: {}, settings: {} });
+    return apiCall('getDashboard', { threshold: state.lowStockThreshold }).then(function(d){
+      state.terlarisNames = (d.produkTerlaris||[]).map(function(p){ return p.nama; });
+      if(state.page==='transaksi') renderTransaksi();
+    }).catch(function(){});
   });
 }
 
@@ -1803,9 +1828,35 @@ function openStokOpnameForm(){
   };
 
   document.getElementById('btnAddCatBlock').onclick = function(){
-    var name = prompt('Nama kategori baru (contoh: Sirup, Bahan Kemasan, dll):');
-    if(!name) return;
-    wrap.insertAdjacentHTML('beforeend', opnameCategoryBlockHtml('cat'+(opnameCatCounter++), name, [{satuan:'gr'}]));
+    var btn = this;
+    if(document.getElementById('newCatInputCard')) return; // sudah terbuka
+    var inputHtml =
+      '<div class="card" id="newCatInputCard" style="margin:0 0 10px;">'+
+        '<div class="field" style="margin-bottom:10px;"><label>Nama Kategori Baru</label><input id="newCatNameInput" placeholder="Contoh: Sirup, Bahan Kemasan, dll"></div>'+
+        '<div style="display:flex;gap:8px;">'+
+          '<button class="btn btn-outline btn-sm" style="flex:1;" id="newCatCancel">Batal</button>'+
+          '<button class="btn btn-primary btn-sm" style="flex:1;" id="newCatConfirm">Tambah Kategori</button>'+
+        '</div>'+
+      '</div>';
+    btn.insertAdjacentHTML('beforebegin', inputHtml);
+    btn.style.display = 'none';
+    var nameInput = document.getElementById('newCatNameInput');
+    nameInput.focus();
+
+    function closeInlineInput(){
+      var card = document.getElementById('newCatInputCard');
+      if(card) card.remove();
+      btn.style.display = '';
+    }
+    function confirmAdd(){
+      var name = nameInput.value.trim();
+      closeInlineInput();
+      if(!name) return;
+      wrap.insertAdjacentHTML('beforeend', opnameCategoryBlockHtml('cat'+(opnameCatCounter++), name, [{satuan:'gr'}]));
+    }
+    document.getElementById('newCatCancel').onclick = closeInlineInput;
+    document.getElementById('newCatConfirm').onclick = confirmAdd;
+    nameInput.onkeydown = function(e){ if(e.key==='Enter'){ e.preventDefault(); confirmAdd(); } };
   };
 
   document.getElementById('btnSaveOpname').onclick = function(){
