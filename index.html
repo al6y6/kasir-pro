@@ -145,6 +145,7 @@ button{font-family:inherit; cursor:pointer;}
 .grid.list-view .badge-low{font-size:9px; padding:2px 6px;}
 .skeleton{background:linear-gradient(90deg,var(--ink-100) 25%,var(--line) 37%,var(--ink-100) 63%); background-size:400% 100%; animation:shimmer 1.4s infinite;}
 @keyframes shimmer{0%{background-position:100% 0}100%{background-position:0 0}}
+@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
 .empty{display:flex; flex-direction:column; align-items:center; justify-content:center; padding:60px 24px; text-align:center; color:var(--ink-500);}
 .empty .msr{font-size:44px; color:var(--ink-300); margin-bottom:10px;}
 
@@ -1429,8 +1430,13 @@ function openPaymentSheet(){
   bayarInput.oninput = recalcBayar; recalcBayar();
 
   document.getElementById('ckBayarBtn').onclick = function(){
+    var btn = this;
+    if(btn.disabled) return; // sudah diproses, cegah dobel klik/tap
     var bayar = Number(bayarInput.value)||0;
     if(state.checkout.metode==='Tunai' && bayar < total){ toast('Uang dibayar kurang dari total','error'); return; }
+    btn.disabled = true;
+    btn.style.opacity = '.6';
+    btn.innerHTML = '<span class="msr" style="animation:spin 1s linear infinite;">sync</span> Memproses…';
     finalizeTransaction(sub, totalDiskon, pajak, total, bayar || total);
   };
 }
@@ -1441,7 +1447,11 @@ function finalizeTransaction(sub, diskon, pajak, total, bayar){
     items: JSON.stringify(state.cart.map(function(c){ return {id:c.id, nama:c.nama, qty:c.qty, harga:c.harga}; })),
     subtotal: sub, diskon: diskon, pajak: pajak, total: total,
     uangDibayar: bayar, metode: ck.metode, kasir: state.kasirNama,
-    memberId: ck.memberId || '', poinDitukar: ck.poinDitukar || 0, kodeVoucher: ck.voucherCode || ''
+    memberId: ck.memberId || '', poinDitukar: ck.poinDitukar || 0, kodeVoucher: ck.voucherCode || '',
+    // ID unik per percobaan checkout — dipakai backend untuk menolak transaksi
+    // dobel kalau permintaan yang sama (tersentuh 2x, atau di-retry lewat
+    // antrean offline) sampai lebih dari sekali.
+    clientTrxId: 'C'+Date.now()+Math.random().toString(36).slice(2,8)
   };
   var cartSnapshot = state.cart.slice();
   var kembalian = bayar-total;
@@ -1467,7 +1477,12 @@ function finalizeTransaction(sub, diskon, pajak, total, bayar){
     return;
   }
   apiCall('createTransaction', payload, 'POST').then(function(res){
-    if(res.error){ toast('Gagal: '+res.error, 'error'); return; }
+    if(res.error){
+      toast('Gagal: '+res.error, 'error');
+      var btn = document.getElementById('ckBayarBtn');
+      if(btn){ btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = 'Bayar & Selesaikan <span class="msr">check_circle</span>'; }
+      return;
+    }
     toast('Transaksi berhasil ✔','check_circle');
     afterSuccess(res.invoice, res.poinDiperoleh);
   }).catch(function(){
